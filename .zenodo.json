@@ -1,0 +1,75 @@
+{
+  "title": "SkinMap: code for \"A Global Atlas of Digital Dermatology to Map Innovation and Disparities\"",
+  "description": "Public code release accompanying the paper \"A Global Atlas of Digital Dermatology to Map Innovation and Disparities\". SkinMap integrates 29 public dermatology datasets (1.1+ million images) into a unified representation space using a fused ensemble of self-supervised and vision-language teacher encoders, imputes missing demographic and clinical metadata with linear probes, and provides an analysis suite for informational novelty, dataset redundancy, coverage, representativeness, and topological gap detection. This repository contains the atlas-construction pipeline, the analysis code, and the SkinMap library. The full pretrained model is distributed on the Hugging Face Hub (Digital-Dermatology/SkinMap); the atlas is reproducible from the public source datasets, this code, and that model.",
+  "upload_type": "software",
+  "license": "Apache-2.0",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Gröger, Fabian",
+      "affiliation": "University of Basel, Switzerland; Lucerne University of Applied Sciences and Arts, Switzerland"
+    },
+    {
+      "name": "Lionetti, Simone",
+      "affiliation": "Lucerne University of Applied Sciences and Arts, Switzerland"
+    },
+    {
+      "name": "Gottfrois, Philippe",
+      "affiliation": "University of Basel, Switzerland; University Hospital of Basel, Switzerland"
+    },
+    {
+      "name": "Gonzalez-Jimenez, Alvaro",
+      "affiliation": "Lucerne University of Applied Sciences and Arts, Switzerland; University Hospital of Basel, Switzerland"
+    },
+    {
+      "name": "Habermacher, Lea",
+      "affiliation": "University Hospital of Basel, Switzerland"
+    },
+    {
+      "name": "Labelling Consortium",
+      "affiliation": "University Hospital of Basel, Switzerland"
+    },
+    {
+      "name": "Amruthalingam, Ludovic",
+      "affiliation": "Lucerne University of Applied Sciences and Arts, Switzerland"
+    },
+    {
+      "name": "Groh, Matthew",
+      "affiliation": "Northwestern University, United States"
+    },
+    {
+      "name": "Pouly, Marc",
+      "affiliation": "Lucerne University of Applied Sciences and Arts, Switzerland"
+    },
+    {
+      "name": "Navarini, Alexander A.",
+      "affiliation": "University of Basel, Switzerland; University Hospital of Basel, Switzerland"
+    }
+  ],
+  "keywords": [
+    "dermatology",
+    "skin",
+    "medical imaging",
+    "dataset atlas",
+    "representation learning",
+    "self-supervised learning",
+    "vision-language models",
+    "metadata imputation",
+    "fairness",
+    "skin of color",
+    "topological data analysis"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "10.48550/arXiv.2601.00840",
+      "relation": "isSupplementTo",
+      "resource_type": "publication-article",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "https://huggingface.co/Digital-Dermatology/SkinMap",
+      "relation": "isSupplementedBy",
+      "scheme": "url"
+    }
+  ]
+}
