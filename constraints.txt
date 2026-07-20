@@ -1,0 +1,2 @@
+# Anything here is a *hard ceiling* for pip resolution.
+numpy<2

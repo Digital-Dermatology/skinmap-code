@@ -1,0 +1,68 @@
+# Python dependencies for SkinMap.
+# The reference environment is the Docker image (see Dockerfile), built on
+# pytorch/pytorch:2.5.1, where faiss is installed via conda (faiss-gpu). For a
+# CPU/local install, faiss-cpu is listed below; swap it for faiss-gpu if desired.
+
+# Deep learning
+torch==2.5.1
+torchvision
+torchinfo
+torchmetrics
+torch-lr-finder
+transformers==4.41.0
+timm
+einops
+
+# Numerical / ML
+numpy<2
+scipy
+pandas
+scikit_learn<1.5
+scikit-image>=0.20.0
+faiss-cpu
+umap-learn
+statsmodels
+xgboost
+imbalanced-learn
+joblib
+
+# Data harmonization / IO
+rapidfuzz
+pyarrow
+fastparquet
+openpyxl
+lxml
+html5lib
+opencv-python
+pillow>=10.0.0
+tabulate
+python-multipart
+cryptography
+
+# Topological data analysis
+ripser>=0.6.8
+
+# Visualization
+matplotlib
+seaborn
+SciencePlots
+plotly
+glasbey
+
+# Logging / experiment tracking
+loguru
+wandb
+tqdm
+
+# Notebooks
+jupyter
+
+# Dev / testing / QA
+pytest
+pytest-cov>=3
+coverage>=6
+codecov
+black>=22.6
+isort>=5.10
+darglint>=1.8
+pre-commit>=2.20

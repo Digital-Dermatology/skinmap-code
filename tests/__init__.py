@@ -1,0 +1,1 @@
+"""SkinMap test suite."""

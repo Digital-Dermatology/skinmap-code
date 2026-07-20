@@ -1,0 +1,20 @@
+[project]
+name = "SkinMap"
+description = "Unifying Dermatological Datasets."
+authors = [
+    { name = "Fabian Gröger", email = "fabian.groeger@unibas.ch" },
+]
+dependencies = [
+    "loguru>=0.7",
+    "ripser>=0.6.8",
+]
+
+[tool.black]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+skip_gitignore=true
+py_version=39
+default_section = "THIRDPARTY"
+known_thirdparty=["wandb"]
