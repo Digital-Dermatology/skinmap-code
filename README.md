@@ -1,5 +1,14 @@
 # SkinMap: A Global Atlas of Digital Dermatology to Map Innovation and Disparities
 
+[![arXiv](https://img.shields.io/badge/arXiv-2601.00840-b31b1b.svg)](https://arxiv.org/abs/2601.00840)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21454008.svg)](https://doi.org/10.5281/zenodo.21454008)
+[![Model on Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-yellow)](https://huggingface.co/Digital-Dermatology/SkinMap)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+<p align="center">
+  <img src="docs/method.svg" alt="SkinMap method overview" width="720">
+</p>
+
 The adoption of artificial intelligence in dermatology promises democratized access to healthcare, but model reliability depends on the quality and comprehensiveness of the data fueling these models. Despite rapid growth in publicly available dermatology images, the field lacks quantitative key performance indicators to measure whether new datasets expand clinical coverage or merely replicate what is already known. Here we present SkinMap, a multi-modal framework for the first comprehensive audit of the field's entire data basis. We unify the publicly available dermatology datasets into a single, queryable semantic atlas comprising more than 1.1 million images of skin conditions and quantify (i) informational novelty over time, (ii) dataset redundancy, and (iii) representation gaps across demographics and diagnoses. Despite exponential growth in dataset sizes, informational novelty across time has somewhat plateaued: Some clusters, such as common neoplasms on fair skin, are densely populated, while underrepresented skin types and many rare diseases remain unaddressed. We further identify structural gaps in coverage: Darker skin tones (Fitzpatrick V-VI) constitute only 11.0% of images and pediatric patients only 2.3%, while many rare diseases and phenotype combinations remain sparsely represented. SkinMap provides infrastructure to measure blind spots and steer strategic data acquisition toward undercovered regions of clinical space.
 
 ## Table of Contents
