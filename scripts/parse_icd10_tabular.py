@@ -51,7 +51,7 @@ def extract_terms(diag: ET.Element, tag_names: Iterable[str]) -> list[str]:
 
 def split_chapter_desc(desc: str) -> tuple[str, str]:
     """Split 'Title (Range)' -> ('Title', 'Range')."""
-    match = re.match(r"^(.*?)(?:\\s*\\(([^)]+)\\))?$", desc.strip())
+    match = re.match(r"^(.*?)(?:\s*\(([^)]+)\))?$", desc.strip())
     if not match:
         return desc.strip(), ""
     title = match.group(1).strip()

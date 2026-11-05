@@ -20,6 +20,15 @@ def test_harmonize_body_location_extracts_laterality_and_region():
     assert out.loc[0, "body_region"] == "upper_limb"
 
 
+def test_harmonize_body_location_routes_isic_acral_strings():
+    # ISIC archive encodes acral sites as bare "acral NOS" / "acral palms or
+    # soles"; these must route to the acral region (see MILK10k/BALD/DERM12345).
+    df = pd.DataFrame({"body_location": ["acral NOS", "acral palms or soles"]})
+    out = harmonize_dataframe(df)
+    assert out.loc[0, "body_region"] == "acral"
+    assert out.loc[1, "body_region"] == "acral"
+
+
 def test_merge_concise_captions_updates_matching_rows(tmp_path):
     concise_path = tmp_path / "concise.csv"
     pd.DataFrame([{"img_path": "a.jpg", "concise_description": "short text"}]).to_csv(

@@ -162,6 +162,36 @@ def create_thumbnail(
         return None
 
 
+def measure_images_parallel(
+    img_paths,
+    measure,
+    max_workers: Optional[int] = None,
+    desc: str = "Measuring images",
+):
+    """Apply a per-image measurement over a list of paths, returning one row each.
+
+    Reading a corpus is the slow part of any pixel-side readout, so it is worth
+    doing once in the same place the thumbnails are made. ``measure`` takes an
+    RGB ``PIL.Image`` and returns whatever the caller wants; a file that cannot
+    be read yields ``None`` rather than stopping the scan.
+    """
+    if max_workers is None:
+        max_workers = min(cpu_count(), 16)
+
+    def _one(path):
+        try:
+            with Image.open(path) as image:
+                return measure(image.convert("RGB"))
+        except Exception as error:  # noqa: BLE001 - a corpus always has bad files
+            logger.debug(f"Failed to measure {path}: {error}")
+            return None
+
+    paths = list(img_paths)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        return list(tqdm(executor.map(_one, paths), total=len(paths), desc=desc,
+                         unit="img"))
+
+
 def create_thumbnail_column_parallel(
     img_paths: pd.Series,
     thumbnail_dir: str,

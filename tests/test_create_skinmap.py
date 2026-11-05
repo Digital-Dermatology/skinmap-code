@@ -157,6 +157,7 @@ class TestRunNameCacheConsistency:
 
     def test_combined_models_with_assets_prefix(self, tmp_path):
         """Test combined run names also strip 'assets/' consistently."""
+        str(tmp_path)
         mock_args = MagicMock()
         mock_args.ssl_model = None
         mock_args.model_path = None
@@ -174,6 +175,7 @@ class TestRunNameCacheConsistency:
 
     def test_combined_models_mixed_paths(self, tmp_path):
         """Test combined models with mixed path formats."""
+        str(tmp_path)
         mock_args = MagicMock()
         mock_args.ssl_model = None
         mock_args.model_path = None

@@ -5,12 +5,11 @@ Evaluates embeddings on classification and regression tasks using various classi
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
 import torch
-import xgboost as xgb
 from loguru import logger
 from sklearn.decomposition import TruncatedSVD
 from sklearn.linear_model import LogisticRegression
@@ -39,6 +38,7 @@ from ..utils.bootstrap import (
     format_metric_with_ci,
 )
 from ..utils.metadata import _create_predictor_model
+from ..utils.transformers_compat import coerce_image_features
 
 
 def _evaluate_classification_task(
@@ -47,7 +47,7 @@ def _evaluate_classification_task(
     col: str,
     test_size: float = 0.2,
     random_state: int = 42,
-    classifier_names: list = ["linear", "knn10", "knn50", "xgboost"],
+    classifier_names: Sequence[str] = ("linear", "knn10", "knn50", "xgboost"),
     learned_metric_L: Optional[np.ndarray] = None,
     return_results: bool = False,
     use_random_baseline: bool = False,
@@ -127,6 +127,7 @@ def _evaluate_classification_task(
             elif clf_name == "knn50":
                 clf = KNeighborsClassifier(n_neighbors=50, metric="cosine")
             elif clf_name == "xgboost":
+                import xgboost as xgb  # lazy: optional heavy dep, not in the slim image
                 clf = xgb.XGBClassifier()
             else:
                 raise ValueError(f"Unknown classifier: {clf_name}")
@@ -279,7 +280,7 @@ def _evaluate_regression_task(
     col: str,
     test_size: float = 0.2,
     random_state: int = 42,
-    regressor_names: list = ["linear", "knn10", "knn50", "xgboost"],
+    regressor_names: Sequence[str] = ("linear", "knn10", "knn50", "xgboost"),
     return_results: bool = False,
     use_random_baseline: bool = False,
     bootstrap_n_iterations: int = 0,
@@ -339,6 +340,7 @@ def _evaluate_regression_task(
 
                 reg = KNeighborsRegressor(n_neighbors=50, metric="cosine")
             elif reg_name == "xgboost":
+                import xgboost as xgb  # lazy: optional heavy dep, not in the slim image
                 reg = xgb.XGBRegressor()
             else:
                 raise ValueError(f"Unknown regressor: {reg_name}")
@@ -503,7 +505,7 @@ def evaluate_image_dataset(
     models_and_processors=None,
     svd_components: Optional[int] = None,
     is_ssl_model: bool = False,
-    classifier_names: list = ["linear", "knn10", "knn50", "xgboost"],
+    classifier_names: Sequence[str] = ("linear", "knn10", "knn50", "xgboost"),
     learned_metric_L: Optional[np.ndarray] = None,
     projector_model=None,
     projector_whitening_stats: Optional[Dict] = None,
@@ -705,7 +707,7 @@ def evaluate_image_dataset(
                             loader, desc=f"CLIP Model {i+1} embedding samples"
                         ):
                             pixel_values = pixel_values.to(device)
-                            img_emb = m.get_image_features(pixel_values)
+                            img_emb = coerce_image_features(m.get_image_features(pixel_values))
                             img_emb = img_emb / img_emb.norm(p=2, dim=-1, keepdim=True)
                             model_embeddings.append(img_emb.cpu().numpy())
                             if i == 0:  # Only collect labels once
@@ -737,7 +739,7 @@ def evaluate_image_dataset(
                 for pixel_values, labels in tqdm(loader, desc="Embedding samples"):
                     pixel_values = pixel_values.to(device)
                     # Extract image embeddings
-                    img_emb = model.get_image_features(pixel_values)
+                    img_emb = coerce_image_features(model.get_image_features(pixel_values))
                     # Optionally normalize
                     img_emb = img_emb / img_emb.norm(p=2, dim=-1, keepdim=True)
                     # Move to CPU and convert to numpy

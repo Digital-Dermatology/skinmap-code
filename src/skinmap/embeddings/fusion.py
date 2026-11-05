@@ -28,6 +28,7 @@ def combine_embeddings_simple(
     dataset_col: str = "dataset_desc",
     num_workers: int = 4,
     svd_components: Optional[int] = None,
+    text_col: Optional[str] = None,
 ) -> Tuple[
     np.ndarray,
     Optional[np.ndarray],
@@ -82,18 +83,40 @@ def combine_embeddings_simple(
 
     if are_compatible:
         logger.info("Loading from compatible caches")
+        reference_df = cached_dfs[0]
         for idx, model_info in enumerate(models):
             result = cache.load_single_model(model_info.model_path)
             if result is None:
                 raise RuntimeError(f"Cache load failed: {model_info.model_path}")
 
-            cached_results[idx] = result
-            image_embs, text_embs, labels, _ = result
+            image_embs, text_embs, labels, cached_df = result
+
+            # Reorder to match model 0's row order if needed
+            if (
+                idx > 0
+                and "img_path" in cached_df.columns
+                and "img_path" in reference_df.columns
+            ):
+                if not cached_df["img_path"].equals(reference_df["img_path"]):
+                    logger.info(
+                        f"Reordering model {idx+1} cache to match model 1 row order"
+                    )
+                    ref_order = {
+                        path: i for i, path in enumerate(reference_df["img_path"])
+                    }
+                    reorder_idx = [ref_order[p] for p in cached_df["img_path"]]
+                    inv_idx = np.argsort(reorder_idx)
+                    image_embs = image_embs[inv_idx]
+                    if text_embs is not None:
+                        text_embs = text_embs[inv_idx]
+                    labels = labels[inv_idx]
+
+            cached_results[idx] = (image_embs, text_embs, labels, cached_df)
 
             if dataset_labels is None:
                 dataset_labels = labels
 
-        filtered_df = cached_dfs[0].copy()
+        filtered_df = reference_df.copy()
 
     else:
         logger.info("Computing embeddings (cache not compatible)")
@@ -153,6 +176,7 @@ def combine_embeddings_simple(
                                 max_samples,
                                 dataset_col,
                                 num_workers,
+                                text_col=text_col,
                             )
                         )
 

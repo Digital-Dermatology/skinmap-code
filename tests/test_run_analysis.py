@@ -1,5 +1,5 @@
 """
-Tests for src/run_analysis.py
+Tests for skinmap.pipeline.run_analysis
 Testing new features: continent mapping, category consolidation, and improved heatmaps.
 """
 
@@ -269,7 +269,7 @@ class TestRunPrevalenceCrossSections:
 
         feature_names = {
             "fitzpatrick_pred": "Fitzpatrick Skin Type",
-            "gender_pred": "Gender",
+            "gender_pred": "Sex",
         }
 
         def csv_path_fn(name):
@@ -297,7 +297,7 @@ class TestRunPrevalenceCrossSections:
 
         feature_names = {
             "fitzpatrick_pred": "Fitzpatrick Skin Type",
-            "gender_pred": "Gender",
+            "gender_pred": "Sex",
         }
 
         def csv_path_fn(name):
@@ -330,7 +330,7 @@ class TestRunPrevalenceCrossSections:
 
         feature_names = {
             "body_region_pred": "Body Region",
-            "gender_pred": "Gender",
+            "gender_pred": "Sex",
         }
 
         def csv_path_fn(name):
@@ -366,7 +366,7 @@ class TestRunPrevalenceCrossSections:
 
         feature_names = {
             "fitzpatrick_pred": "Fitzpatrick Skin Type",
-            "gender_pred": "Gender",
+            "gender_pred": "Sex",
         }
 
         def csv_path_fn(name):
@@ -614,7 +614,7 @@ class TestMultilabelPrevalence:
 
         feature_names = {
             "origin_pred": "Origin",
-            "gender_pred": "Gender",
+            "gender_pred": "Sex",
         }
 
         def csv_path_fn(name):
@@ -706,7 +706,7 @@ class TestMultilabelPrevalence:
 
         feature_names = {
             "origin_pred": "Origin",
-            "gender_pred": "Gender",
+            "gender_pred": "Sex",
         }
 
         def csv_path_fn(name):
@@ -727,10 +727,10 @@ class TestMultilabelPrevalence:
         # First row should create: (usa, male) and (canada, male)
         # Crosstab creates all combinations, so we check non-zero counts
         male_nonzero = result_df[
-            (result_df["Gender"] == "male") & (result_df["count"] > 0)
+            (result_df["Sex"] == "male") & (result_df["count"] > 0)
         ]
         female_nonzero = result_df[
-            (result_df["Gender"] == "female") & (result_df["count"] > 0)
+            (result_df["Sex"] == "female") & (result_df["count"] > 0)
         ]
 
         assert len(male_nonzero) == 2  # usa and canada with male
@@ -749,7 +749,7 @@ class TestMultilabelPrevalence:
 
         feature_names = {
             "origin_pred": "Origin",
-            "gender_pred": "Gender",
+            "gender_pred": "Sex",
         }
 
         def csv_path_fn(name):

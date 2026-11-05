@@ -490,9 +490,7 @@ def plot_condition_trends(
     return fig, ax
 
 
-DEFAULT_CLUSTER_PATH = (
-    Path(__file__).resolve().parents[1] / "results" / "hierarchy_final_all_levels.csv"
-)
+DEFAULT_CLUSTER_PATH = Path("results") / "hierarchy_final_all_levels.csv"
 
 
 def load_condition_cluster_mapping(

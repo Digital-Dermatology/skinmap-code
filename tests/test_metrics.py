@@ -384,6 +384,13 @@ class TestTransformationQuality:
         embeddings = np.vstack([class0, class1])
         labels = np.array([0] * (n_samples // 2) + [1] * (n_samples // 2))
 
+        # Compute original separation
+        class0_orig = embeddings[: n_samples // 2]
+        class1_orig = embeddings[n_samples // 2 :]
+        np.linalg.norm(
+            np.mean(class0_orig, axis=0) - np.mean(class1_orig, axis=0)
+        )
+
         # Learn metric
         L_matrix = compute_learned_metric_transformation(
             embeddings,

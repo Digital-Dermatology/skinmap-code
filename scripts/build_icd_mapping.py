@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 import pandas as pd
@@ -13,10 +12,6 @@ try:
     from tqdm import tqdm
 except ImportError:
     tqdm = None
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
 from skinmap.icd_mapping import ConditionICDMapper
 

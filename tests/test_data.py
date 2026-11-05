@@ -382,6 +382,7 @@ class TestEdgeCases:
         """Test thumbnail generation for very large image."""
         thumbnail_dir = os.path.join(temp_dir, "thumbnails")
 
+        os.path.join(temp_dir, "huge.jpg")
         # Create 10000x10000 image (but don't save to avoid disk space issues)
         # Instead test the logic
         normal_path = os.path.join(temp_dir, "normal.jpg")

@@ -2,7 +2,6 @@ import io
 import json
 import logging
 import os
-import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +26,30 @@ except ImportError:  # pragma: no cover - fallback for older sklearn versions
 logger = logging.getLogger(__name__)
 
 
+def _coerce_clip_features(feats, embeds_attr: str):
+    """Return the projected feature tensor from a CLIP ``get_*_features`` call.
+
+    Some transformers versions return a ``BaseModelOutputWithPooling`` rather
+    than a tensor. In that case the projected embedding lives in the ``*_embeds``
+    field, or in ``pooler_output`` (which holds the projected vector for the
+    shipped CLIP checkpoints). ``last_hidden_state`` is not used as a fallback:
+    its CLS token has the encoder hidden dim, not the projection dim, so it would
+    silently corrupt the embedding. Shared by the image and text paths.
+    """
+    if isinstance(feats, torch.Tensor):
+        return feats
+    for attr in (embeds_attr, "pooler_output"):
+        val = getattr(feats, attr, None)
+        if val is not None:
+            return val
+    kind = embeds_attr.split("_")[0]
+    raise TypeError(
+        f"get_{kind}_features returned {type(feats).__name__} with neither "
+        f"'{embeds_attr}' nor 'pooler_output'; cannot extract the projected "
+        f"embedding (unsupported transformers version?)."
+    )
+
+
 @dataclass
 class ClipModelWrapper:
     name: str
@@ -40,7 +63,9 @@ class ClipModelWrapper:
         inputs = {k: v.to(device) for k, v in inputs.items()}
         self.model.eval()
         with torch.inference_mode():
-            feats = self.model.get_image_features(**inputs)
+            feats = _coerce_clip_features(
+                self.model.get_image_features(**inputs), "image_embeds"
+            )
             # Normalize to match training pipeline
             feats = feats / feats.norm(p=2, dim=-1, keepdim=True)
         return feats.detach().cpu().numpy()
@@ -149,10 +174,8 @@ class CombinedEmbeddingPipeline:
             seen.add(key)
             if not candidate.exists():
                 continue
-            # Heuristic: the SkinMap repo root contains src/combined_embedder.py
-            if (candidate / "src" / "combined_embedder.py").exists():
-                if key not in sys.path:
-                    sys.path.append(key)
+            # The repository root holds this file under src/skinmap/pipeline.
+            if (candidate / "src" / "skinmap" / "pipeline" / "combined_embedder.py").exists():
                 return candidate
 
         logger.warning(
@@ -292,6 +315,33 @@ class CombinedEmbeddingPipeline:
 
     def _load_umap(self, rel_path: Optional[str]):
         model = self._load_joblib(rel_path)
+        if model is None:
+            # Retry with NNDescent monkey-patch for pynndescent version mismatch.
+            # Newer pynndescent adds a `quantization` attribute that older versions
+            # lack, causing joblib.load to fail.
+            resolved = self._resolve_artifact(rel_path)
+            if resolved is not None and resolved.exists():
+                try:
+                    os.environ.setdefault("NUMBA_CACHE_DIR", "/tmp/numba_cache")
+                    import pynndescent
+
+                    NNDescent = pynndescent.NNDescent
+                    if not hasattr(NNDescent, "quantization"):
+                        NNDescent.quantization = None  # type: ignore[attr-defined]
+                        logger.info(
+                            "Patched NNDescent with missing 'quantization' attribute"
+                        )
+                    if not hasattr(NNDescent, "_min_distance"):
+                        NNDescent._min_distance = None  # type: ignore[attr-defined]
+                        logger.info(
+                            "Patched NNDescent with missing '_min_distance' attribute"
+                        )
+                    model = joblib.load(resolved)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to load UMAP model even after NNDescent patch: %s", exc
+                    )
+                    model = None
         if model is not None:
             logger.info("UMAP model loaded for upload projections")
         return model
@@ -637,7 +687,17 @@ class CombinedEmbeddingPipeline:
         # Step 2: Concatenate
         z_cat = np.concatenate(processed, axis=1).astype(np.float32)
 
-        # Step 3: Project through trained model
+        # Step 3: L2-normalize each teacher block (matches training pipeline)
+        dims = self.whitening_stats["dims"]
+        start = 0
+        for dim in dims:
+            block = z_cat[:, start : start + dim]
+            norms = np.linalg.norm(block, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            z_cat[:, start : start + dim] = block / norms
+            start += dim
+
+        # Step 4: Project through trained model
         z_cat_tensor = torch.from_numpy(z_cat).to(self.device)
         with torch.inference_mode():
             projected = self.projector_model.img_head(z_cat_tensor)
@@ -648,9 +708,30 @@ class CombinedEmbeddingPipeline:
         image = Image.open(io.BytesIO(data)).convert("RGB")
         return self.embed_image(image)
 
-    def encode_text(self, text: str) -> np.ndarray:
-        """
-        Encode a text query into the shared embedding space.
+    # Default prompt templates for text search.  CLIP models are trained on
+    # image-caption pairs so bare keywords ("melanoma") live in a very
+    # different part of the embedding space than descriptive captions.
+    # Wrapping the query in templates and averaging the resulting embeddings
+    # brings the query much closer to the image distribution.
+    DEFAULT_TEXT_TEMPLATES: List[str] = [
+        "This image shows {}",
+        "a clinical photograph of {}",
+        "a dermatoscopic image of {}",
+        "a medical image showing {}",
+        "a close-up photograph of {} on skin",
+    ]
+
+    def encode_text(
+        self,
+        text: str,
+        templates: Optional[List[str]] = None,
+    ) -> np.ndarray:
+        """Encode a text query into the shared embedding space.
+
+        When *templates* is provided (or defaults are used), the query is
+        formatted into each template, encoded separately, and the resulting
+        embeddings are averaged and re-normalized.  Pass ``templates=["{}"]``
+        to encode the raw text without any prompt engineering.
 
         For projector pipeline: extracts text embeddings from CLIP models only,
         concatenates them, and projects through the text head.
@@ -660,6 +741,77 @@ class CombinedEmbeddingPipeline:
         if not self.clip_models:
             raise RuntimeError("No CLIP models loaded. Cannot encode text.")
 
+        if templates is None:
+            templates = self.DEFAULT_TEXT_TEMPLATES
+
+        # Expand the query into all templates
+        prompts = [t.format(text) for t in templates]
+
+        # Encode all prompts and average. With a trained projector, all prompts
+        # go through each CLIP teacher in one batched forward (C forwards, not
+        # N*C). The legacy pipeline falls back to per-prompt encoding.
+        if self.projector_model is not None and self.whitening_stats is not None:
+            per_prompt = self._encode_texts_projector(prompts)
+        else:
+            per_prompt = np.stack(
+                [self._encode_single_text(p) for p in prompts], axis=0
+            )
+        avg = per_prompt.mean(axis=0)
+        avg = avg / (np.linalg.norm(avg) + 1e-8)
+        return avg.astype(np.float32)
+
+    def _encode_texts_projector(self, texts: List[str]) -> np.ndarray:
+        """Batched projector-path text encoding.
+
+        Returns an ``(N, d_out)`` array of projected, L2-normalized text
+        embeddings, one per input string. All prompts pass through each CLIP
+        teacher in a single padded forward. CLIP's EOS-token pooling is
+        right-padding invariant, so this matches per-prompt encoding.
+        """
+        from skinmap.pipeline.embedding_fusion import apply_whiten, l2_normalize
+
+        clip_indices = self.whitening_stats.get("clip_indices", [])
+        if not clip_indices:
+            clip_indices = list(range(len(self.clip_models)))
+        clip_index_set = set(clip_indices)
+        text_whitening = self.whitening_stats.get("text_whitening")
+
+        per_model = []  # each (N, d_i)
+        clip_idx_counter = 0
+        for i, (_model_type, model_wrapper) in enumerate(self.models_in_order):
+            if i not in clip_index_set:
+                continue
+            inputs = model_wrapper.processor(
+                text=list(texts), return_tensors="pt", padding=True
+            )
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            with torch.inference_mode():
+                text_emb = _coerce_clip_features(
+                    model_wrapper.model.get_text_features(**inputs), "text_embeds"
+                )
+                text_emb = text_emb / text_emb.norm(p=2, dim=-1, keepdim=True)
+            feat = text_emb.cpu().numpy()  # (N, d_i)
+            if text_whitening is not None:
+                feat = apply_whiten(
+                    l2_normalize(feat, axis=1),
+                    text_whitening["mu"][clip_idx_counter],
+                    text_whitening["W"][clip_idx_counter],
+                )
+            per_model.append(feat)
+            clip_idx_counter += 1
+
+        # Concatenate per-teacher blocks, L2-normalize each row, project.
+        text_concat = np.concatenate(per_model, axis=1).astype(np.float32)
+        norms = np.linalg.norm(text_concat, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        text_concat = text_concat / norms
+        text_tensor = torch.from_numpy(text_concat).to(self.device)
+        with torch.inference_mode():
+            projected = self.projector_model.txt_head(text_tensor)
+        return projected.cpu().numpy()  # (N, d_out)
+
+    def _encode_single_text(self, text: str) -> np.ndarray:
+        """Encode a single text string (no template expansion)."""
         if self.projector_model is not None and self.whitening_stats is not None:
             # Projector pipeline: concatenate text from CLIP models only
             from skinmap.pipeline.embedding_fusion import apply_whiten, l2_normalize
@@ -677,7 +829,10 @@ class CombinedEmbeddingPipeline:
                     inputs = model_wrapper.processor(text=[text], return_tensors="pt")
                     inputs = {k: v.to(self.device) for k, v in inputs.items()}
                     with torch.inference_mode():
-                        text_emb = model_wrapper.model.get_text_features(**inputs)
+                        text_emb = _coerce_clip_features(
+                            model_wrapper.model.get_text_features(**inputs),
+                            "text_embeds",
+                        )
                         # Normalize
                         text_emb = text_emb / text_emb.norm(p=2, dim=-1, keepdim=True)
                         text_feat = text_emb.cpu().numpy()
@@ -700,6 +855,11 @@ class CombinedEmbeddingPipeline:
             # Concatenate text features from all CLIP models
             text_concat = np.concatenate(text_features).astype(np.float32)
 
+            # L2-normalize the concatenated text vector (matches training pipeline)
+            norm = np.linalg.norm(text_concat)
+            if norm > 0:
+                text_concat = text_concat / norm
+
             # Project through text head
             text_tensor = torch.from_numpy(text_concat).unsqueeze(0).to(self.device)
             with torch.inference_mode():
@@ -712,7 +872,9 @@ class CombinedEmbeddingPipeline:
             inputs = clip_model.processor(text=[text], return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             with torch.inference_mode():
-                text_emb = clip_model.model.get_text_features(**inputs)
+                text_emb = _coerce_clip_features(
+                    clip_model.model.get_text_features(**inputs), "text_embeds"
+                )
                 text_emb = text_emb / text_emb.norm(p=2, dim=-1, keepdim=True)
 
             # If SVD available, apply it

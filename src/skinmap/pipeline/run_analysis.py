@@ -15,18 +15,21 @@ logging.basicConfig(
 )
 
 from skinmap.pipeline.analysis_plus import dataset_domain_shift, l2_normalize, yearly_novelty
+from skinmap.icd_mapping import annotate_icd, load_icd_mapping
 
 AGE_BINS = [0, 18, 30, 50, 70, 120]
 AGE_LABELS = ["0-17", "18-29", "30-49", "50-69", "70+"]
 PREVALENCE_FEATURES: Dict[str, str] = {
     "fitzpatrick_pred": "Fitzpatrick Skin Type",
-    "gender_pred": "Gender",
+    "gender_pred": "Sex",
     "origin_pred": "Origin",
     "origin_continent": "Origin (Continent)",
     "body_region_pred": "Body Region",
     "laterality_pred": "Laterality",
     "age_pred_bin": "Age",
     "modality": "Modality",
+    "severity_icd_pred": "Severity (ICD)",
+    "severity_symptom_pred": "Severity (Symptom)",
 }
 
 # Comprehensive country-to-continent mapping
@@ -240,59 +243,6 @@ COUNTRY_TO_CONTINENT: Dict[str, str] = {
 MAX_CATEGORIES_DISPLAY = 15
 
 
-def load_icd_mapping(path: str) -> Optional[pd.DataFrame]:
-    if not path:
-        return None
-    if not os.path.exists(path):
-        logging.warning("ICD mapping file not found: %s", path)
-        return None
-    mapping = pd.read_csv(path).fillna("")
-    if "condition_raw" not in mapping.columns:
-        logging.warning("ICD mapping missing 'condition_raw' column: %s", path)
-        return None
-    keep_cols = [
-        "condition_raw",
-        "icd_code",
-        "icd_description",
-        "chapter",
-        "chapter_title",
-        "chapter_range",
-        "section_id",
-        "section_desc",
-    ]
-    missing = [c for c in keep_cols if c not in mapping.columns]
-    if missing:
-        logging.warning("ICD mapping missing columns: %s", ", ".join(missing))
-        return None
-    mapping = mapping[keep_cols].drop_duplicates("condition_raw")
-    mapping = mapping.rename(
-        columns={
-            "chapter": "icd_chapter",
-            "chapter_title": "icd_chapter_title",
-            "chapter_range": "icd_chapter_range",
-            "section_id": "icd_block",
-            "section_desc": "icd_block_desc",
-        }
-    )
-    mapping["icd_code"] = mapping["icd_code"].astype(str)
-    mapping["icd_category"] = mapping["icd_code"].str.split(".").str[0]
-    mapping["icd_category"] = mapping["icd_category"].where(
-        mapping["icd_category"].str.strip().astype(bool), ""
-    )
-    category_desc = (
-        mapping.loc[mapping["icd_category"].str.strip().astype(bool)]
-        .groupby("icd_category")["icd_description"]
-        .first()
-    )
-    mapping["icd_category_desc"] = mapping["icd_category"].map(category_desc).fillna("")
-    mapping["icd_category_label"] = (
-        mapping["icd_category"].astype(str).str.strip()
-        + " - "
-        + mapping["icd_category_desc"].astype(str).str.strip()
-    ).str.strip(" -")
-    return mapping
-
-
 def coerce_year_series(meta: pd.DataFrame, year_col: str) -> Optional[pd.Series]:
     if year_col not in meta.columns:
         logging.warning("Year column '%s' not found in metadata.", year_col)
@@ -302,57 +252,6 @@ def coerce_year_series(meta: pd.DataFrame, year_col: str) -> Optional[pd.Series]
         logging.warning("No numeric values found in %s column.", year_col)
         return None
     return year_series
-
-
-def annotate_icd(
-    meta: pd.DataFrame, mapping: pd.DataFrame, condition_col: str
-) -> pd.DataFrame:
-    icd_cols = [
-        "icd_code",
-        "icd_description",
-        "icd_chapter",
-        "icd_chapter_title",
-        "icd_chapter_range",
-        "icd_block",
-        "icd_block_desc",
-        "icd_category",
-        "icd_category_desc",
-        "icd_category_label",
-    ]
-    merged = meta.merge(
-        mapping,
-        how="left",
-        left_on=condition_col,
-        right_on="condition_raw",
-        suffixes=("", "_icdmap"),
-    )
-    if "condition_raw" in merged.columns:
-        merged = merged.drop(columns=["condition_raw"])
-    for col in icd_cols:
-        if col not in merged.columns:
-            merged[col] = ""
-        merged[col] = merged[col].fillna("").astype(str)
-    merged["icd_chapter"] = merged["icd_chapter"].replace("", "Unmapped")
-    merged["icd_chapter_title"] = merged["icd_chapter_title"].replace("", "Unmapped")
-    merged["icd_block"] = merged["icd_block"].replace("", "Unmapped")
-    merged["icd_block_desc"] = merged["icd_block_desc"].replace("", "Unmapped")
-    merged["icd_category"] = merged["icd_category"].replace("", "Unmapped")
-    merged["icd_category_desc"] = merged["icd_category_desc"].replace("", "Unmapped")
-    merged["icd_category_label"] = merged["icd_category_label"].replace("", "Unmapped")
-    merged["icd_chapter_label"] = (
-        merged["icd_chapter"].astype(str).str.strip()
-        + " - "
-        + merged["icd_chapter_title"]
-    ).str.strip(" -")
-    merged["icd_block_label"] = (
-        merged["icd_block"].astype(str).str.strip() + " - " + merged["icd_block_desc"]
-    ).str.strip(" -")
-    merged["icd_category_label"] = (
-        merged["icd_category"].astype(str).str.strip()
-        + " - "
-        + merged["icd_category_desc"].astype(str).str.strip()
-    ).str.strip(" -")
-    return merged
 
 
 def run_icd_analysis(
@@ -1368,6 +1267,12 @@ def main():
         help="Random seed for yearly novelty bootstrap.",
     )
     p.add_argument(
+        "--fd_bootstrap_reps",
+        type=int,
+        default=0,
+        help="Number of bootstrap resamples for Fréchet distance CIs (0 disables).",
+    )
+    p.add_argument(
         "--force_recompute",
         action="store_true",
         help="Force recomputation of all results, ignoring existing CSV files",
@@ -1388,20 +1293,9 @@ def main():
         raise FileNotFoundError(meta_path)
     if not embeddings_path.exists():
         raise FileNotFoundError(embeddings_path)
-    if not atlas_path.exists():
-        raise FileNotFoundError(
-            f"Required metadata file not found: {atlas_path}. "
-            "atlas_input.parquet is produced by create_skinmap.py with --use_atlas."
-        )
     outdir_path.mkdir(parents=True, exist_ok=True)
 
     meta = load_metadata(atlas_path)
-    if meta is None:
-        raise ValueError(
-            f"Failed to load metadata from {atlas_path}; the parquet is unreadable "
-            "or missing the required 'img_path' column. Regenerate it with "
-            "create_skinmap.py --use_atlas."
-        )
     meta = meta.rename(columns={"image": "thumbnail_rel_path"})
     if "thumbnail_rel_path" not in meta.columns:
         meta["thumbnail_rel_path"] = ""
@@ -1472,9 +1366,13 @@ def main():
 
     # Domain Shift Analysis
     if args.dataset_col in meta.columns and not should_skip("domain_shift_frechet.csv"):
-        dataset_domain_shift(Xn, meta[args.dataset_col]).to_csv(
-            csv_path("domain_shift_frechet.csv"), index=False
-        )
+        dataset_domain_shift(
+            Xn,
+            meta[args.dataset_col],
+            n_bootstrap=args.fd_bootstrap_reps,
+            alpha=args.novelty_alpha,
+            random_state=args.novelty_seed,
+        ).to_csv(csv_path("domain_shift_frechet.csv"), index=False)
 
     if (
         icd_mapping_df is not None

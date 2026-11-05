@@ -379,10 +379,17 @@ class TestFusionDimensionChecks:
 
 def test_smoke_all_bugfixes():
     """Smoke test to verify all bugfix code paths are reachable."""
-    # Verify imports work
+    import skinmap.cache.manager as manager
+    import skinmap.embeddings.extractors as extractors
+    import skinmap.pipeline.create_skinmap as create_skinmap
 
-    # If we got here, all the fixed code is importable
-    assert True
+    assert create_skinmap._save_downstream_results
+    assert create_skinmap.extract_or_load_embeddings
+    assert create_skinmap.load_cached_separability_results
+    assert create_skinmap.reuse_cached_metadata_predictions
+    assert manager.CacheConfig
+    assert manager.EmbeddingCache
+    assert extractors._filter_corrupted
 
 
 if __name__ == "__main__":

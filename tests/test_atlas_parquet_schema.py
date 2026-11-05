@@ -92,6 +92,7 @@ def test_atlas_parquet_schema_efficiency(tmp_path):
         output_dir=str(tmp_path),
         args=args,
         store_vectors=True,
+        launch_cli=False,
         force_recompute=True,
     )
 

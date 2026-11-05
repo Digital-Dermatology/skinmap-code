@@ -6,8 +6,6 @@ Provides under-sampling and over-sampling strategies for creating balanced datas
 from typing import Literal, Tuple
 
 import numpy as np
-from imblearn.over_sampling import RandomOverSampler
-from imblearn.under_sampling import RandomUnderSampler
 from loguru import logger
 
 
@@ -35,11 +33,15 @@ def balance_dataset(
     unique, counts = np.unique(y, return_counts=True)
     logger.info(f"Original class distribution: {dict(zip(unique, counts))}")
 
+    # imblearn is an optional heavy dep (absent from the slim training image); only
+    # needed for actual (over|under)sampling, so import it lazily here.
     if strategy == "undersample":
+        from imblearn.under_sampling import RandomUnderSampler
         sampler = RandomUnderSampler(random_state=random_state)
         X_balanced, y_balanced = sampler.fit_resample(X, y)
         logger.info(f"Applied under-sampling: {len(y)} -> {len(y_balanced)} samples")
     elif strategy == "oversample":
+        from imblearn.over_sampling import RandomOverSampler
         sampler = RandomOverSampler(random_state=random_state)
         X_balanced, y_balanced = sampler.fit_resample(X, y)
         logger.info(f"Applied over-sampling: {len(y)} -> {len(y_balanced)} samples")

@@ -15,7 +15,7 @@ def compute_learned_metric_transformation(
     random_state: int = 42,
     max_samples: int = 250_000,
 ) -> Optional[np.ndarray]:
-    """Learn a metric transformation from SGDClassifier weights.
+    """Learn a metric transformation from LogisticRegression weights.
 
     Trains a classifier on the provided embeddings and labels, then computes
     transformation L such that M = W^T @ W = L^T @ L, where W are the

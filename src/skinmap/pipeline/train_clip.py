@@ -31,6 +31,11 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
+from skinmap.utils.transformers_compat import (
+    coerce_image_features,
+    coerce_text_features,
+)
+
 Image.MAX_IMAGE_PIXELS = None
 
 
@@ -541,12 +546,16 @@ def train_epoch(epoch, args, model, optimizer, scheduler, loader, device, scaler
         with torch.cuda.amp.autocast(enabled=args.fp16):
             # get model (handle DDP wrapper)
             actual_model = model.module if hasattr(model, "module") else model
-            image_embeds = actual_model.get_image_features(
-                pixel_values=pixel_values,
+            image_embeds = coerce_image_features(
+                actual_model.get_image_features(
+                    pixel_values=pixel_values,
+                )
             )
-            text_embeds = actual_model.get_text_features(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
+            text_embeds = coerce_text_features(
+                actual_model.get_text_features(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                )
             )
 
             # normalize embeddings
@@ -649,9 +658,13 @@ def validate(args, model, loader, device, epoch):
             actual_model = model.module if hasattr(model, "module") else model
 
             # Forward pass
-            image_embeds = actual_model.get_image_features(pixel_values=pixel_values)
-            text_embeds = actual_model.get_text_features(
-                input_ids=input_ids, attention_mask=attention_mask
+            image_embeds = coerce_image_features(
+                actual_model.get_image_features(pixel_values=pixel_values)
+            )
+            text_embeds = coerce_text_features(
+                actual_model.get_text_features(
+                    input_ids=input_ids, attention_mask=attention_mask
+                )
             )
 
             # Normalize embeddings
@@ -789,8 +802,12 @@ def extract_embeddings(
                     k: v.to(device, non_blocking=True) for k, v in text_inputs.items()
                 }
 
-                img_feats = actual_model.get_image_features(**image_inputs)
-                txt_feats = actual_model.get_text_features(**text_inputs)
+                img_feats = coerce_image_features(
+                    actual_model.get_image_features(**image_inputs)
+                )
+                txt_feats = coerce_text_features(
+                    actual_model.get_text_features(**text_inputs)
+                )
 
                 image_embs.append(img_feats.cpu())
                 text_embs.append(txt_feats.cpu())

@@ -54,6 +54,11 @@ def _mean_and_cov(X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return m, C
 
 
+def _mean_and_var(X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute mean and diagonal variance only (for fast bootstrap FD)."""
+    return X.mean(axis=0), X.var(axis=0, ddof=1)
+
+
 def frechet_distance_gaussians(m1, C1, m2, C2) -> float:
     diff = m1 - m2
     try:
@@ -69,11 +74,42 @@ def frechet_distance_gaussians(m1, C1, m2, C2) -> float:
     return float(np.real(fd))
 
 
-def dataset_domain_shift(X: np.ndarray, datasets: Iterable) -> pd.DataFrame:
+def _frechet_distance_diagonal(m1, v1, m2, v2) -> float:
+    """Fréchet distance assuming diagonal covariance (O(d) instead of O(d³))."""
+    diff = m1 - m2
+    fd = float(
+        diff @ diff
+        + v1.sum()
+        + v2.sum()
+        - 2.0 * np.sqrt(np.clip(v1 * v2, 0, None)).sum()
+    )
+    return fd
+
+
+def dataset_domain_shift(
+    X: np.ndarray,
+    datasets: Iterable,
+    n_bootstrap: int = 0,
+    alpha: float = 0.05,
+    random_state: int | None = None,
+) -> pd.DataFrame:
+    """Pairwise Fréchet distances between datasets.
+
+    Parameters
+    ----------
+    n_bootstrap : int
+        If >0, compute bootstrap confidence intervals by resampling
+        within each dataset pair.
+    alpha : float
+        Significance level for CI (default 0.05 → 95% CI).
+    random_state : int | None
+        Seed for reproducibility.
+    """
     df = pd.DataFrame({"dataset": list(datasets)})
     Xn = l2_normalize(X)
     groups = df.groupby("dataset").indices
     stats = {k: _mean_and_cov(Xn[list(idxs)]) for k, idxs in groups.items()}
+    rng = np.random.default_rng(random_state)
     rows = []
     keys = list(stats.keys())
     for i, a in enumerate(keys):
@@ -83,7 +119,30 @@ def dataset_domain_shift(X: np.ndarray, datasets: Iterable) -> pd.DataFrame:
             m1, C1 = stats[a]
             m2, C2 = stats[b]
             fd = frechet_distance_gaussians(m1, C1, m2, C2)
-            rows.append({"dataset_a": a, "dataset_b": b, "frechet": fd})
+            row = {"dataset_a": a, "dataset_b": b, "frechet": fd}
+            if n_bootstrap > 0:
+                idxs_a = list(groups[a])
+                idxs_b = list(groups[b])
+                boot_fds = []
+                for _ in range(n_bootstrap):
+                    ba = rng.choice(idxs_a, size=len(idxs_a), replace=True)
+                    bb = rng.choice(idxs_b, size=len(idxs_b), replace=True)
+                    bm1, bv1 = _mean_and_var(Xn[ba])
+                    bm2, bv2 = _mean_and_var(Xn[bb])
+                    boot_fds.append(
+                        _frechet_distance_diagonal(bm1, bv1, bm2, bv2)
+                    )
+                boot_std = float(np.nanstd(boot_fds))
+                # Use bootstrap std to construct CI around the full-covariance
+                # point estimate (fd ± z * std). The diagonal bootstrap
+                # captures sampling variance but has a systematic offset in
+                # absolute value, so we center the CI on the full estimate.
+                from scipy.stats import norm as _norm
+                z = _norm.ppf(1.0 - alpha / 2.0)
+                row["frechet_ci_low"] = fd - z * boot_std
+                row["frechet_ci_high"] = fd + z * boot_std
+                row["frechet_std"] = boot_std
+            rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -116,6 +175,8 @@ def yearly_novelty(
                 {
                     "year": int(y),
                     "raw_novelty": np.nan,
+                    "raw_ci_low": np.nan,
+                    "raw_ci_high": np.nan,
                     "norm_novelty": np.nan,
                     "baseline_novelty": np.nan,
                     "baseline_ci_low": np.nan,
@@ -130,6 +191,16 @@ def yearly_novelty(
         # Convert cosine similarity to a per-sample mean distance
         per_sample = (1.0 - sims).mean(axis=1)
         raw = float(per_sample.mean())
+
+        # Bootstrap CI on the observed novelty score itself
+        raw_ci_low, raw_ci_high = np.nan, np.nan
+        if n_bootstrap > 0 and len(per_sample) > 1:
+            boot_raws = []
+            for _ in range(n_bootstrap):
+                boot_sel = rng.choice(len(per_sample), size=len(per_sample), replace=True)
+                boot_raws.append(float(per_sample[boot_sel].mean()))
+            raw_ci_low = float(np.nanquantile(boot_raws, alpha / 2.0))
+            raw_ci_high = float(np.nanquantile(boot_raws, 1.0 - alpha / 2.0))
 
         # Null baseline: expected novelty if we drew the same number of samples
         # from the pool of previous years.
@@ -185,6 +256,8 @@ def yearly_novelty(
             {
                 "year": int(y),
                 "raw_novelty": raw,
+                "raw_ci_low": raw_ci_low,
+                "raw_ci_high": raw_ci_high,
                 # Keep the legacy column name but without the previous up-weighting.
                 "norm_novelty": raw,
                 "baseline_novelty": baseline_mean,

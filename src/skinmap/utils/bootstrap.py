@@ -18,6 +18,47 @@ from sklearn.metrics import (
 )
 
 
+def paired_difference_ci(
+    difference: np.ndarray,
+    n_iterations: int = 10_000,
+    confidence_level: float = 0.95,
+    random_state: int = 42,
+) -> Dict[str, float]:
+    """Bootstrap the mean of a per-unit paired difference.
+
+    Two arms measured on the same units are paired, and the quantity with an
+    honest error bar is the mean of their per-unit difference.  Comparing two
+    marginal means instead drags the between-unit spread into the interval, which
+    can hide an effect that holds for every single unit.
+
+    Returns the mean, its interval, and whether that interval clears zero.  NaN
+    differences are dropped, and fewer than two usable units yields NaN rather
+    than an interval built from nothing.
+    """
+    values = np.asarray(difference, dtype=float).reshape(-1)
+    values = values[np.isfinite(values)]
+    if len(values) < 2:
+        return {
+            "n": int(len(values)),
+            "mean_difference": float(values.mean()) if len(values) else float("nan"),
+            "ci_low": float("nan"),
+            "ci_high": float("nan"),
+            "excludes_zero": False,
+        }
+    rng = np.random.default_rng(random_state)
+    draws = rng.choice(values, size=(int(n_iterations), len(values)), replace=True)
+    means = draws.mean(axis=1)
+    alpha = 1.0 - confidence_level
+    low, high = np.percentile(means, [alpha / 2 * 100, (1 - alpha / 2) * 100])
+    return {
+        "n": int(len(values)),
+        "mean_difference": float(values.mean()),
+        "ci_low": float(low),
+        "ci_high": float(high),
+        "excludes_zero": bool(low > 0 or high < 0),
+    }
+
+
 def bootstrap_confidence_interval(
     y_true: np.ndarray,
     y_pred: np.ndarray,
