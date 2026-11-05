@@ -1,0 +1,15 @@
+# Tools for development and tests, on top of requirements.txt.
+
+# Notebooks
+jupyter
+
+# Dev / testing / QA
+pytest
+pytest-cov>=3
+coverage>=6
+codecov
+black>=22.6
+isort>=5.10
+darglint>=1.8
+pre-commit>=2.20
+ruff

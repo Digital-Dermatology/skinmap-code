@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.skinmap.cache.manager import CacheConfig, EmbeddingCache
+from skinmap.cache.manager import CacheConfig, EmbeddingCache
 
 
 class TestCacheCorruptionDetection:
@@ -49,7 +49,7 @@ class TestCacheCorruptionDetection:
         mock_args.output_dir = str(tmp_path)
 
         # Import function
-        from src.create_skinmap import extract_or_load_embeddings
+        from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
 
         # Test: Should raise RuntimeError with clear message
         with pytest.raises(RuntimeError, match="CACHE CORRUPTION.*0 samples"):
@@ -95,7 +95,7 @@ class TestCacheCorruptionDetection:
         mock_args = MagicMock()
         mock_args.output_dir = str(tmp_path)
 
-        from src.create_skinmap import extract_or_load_embeddings
+        from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
 
         # Test: Should raise RuntimeError about missing dataframe
         with pytest.raises(RuntimeError, match="dataframe is missing"):
@@ -155,7 +155,7 @@ class TestCacheCorruptionDetection:
         mock_args = MagicMock()
         mock_args.output_dir = str(tmp_path)
 
-        from src.create_skinmap import extract_or_load_embeddings
+        from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
 
         # Test: Should raise RuntimeError about dimension mismatch
         with pytest.raises(RuntimeError, match="CACHE CORRUPTION.*Dimension mismatch"):
@@ -216,11 +216,11 @@ class TestResultsSaving:
         mock_args.svd_components = None
 
         # Mock model and extraction
-        with patch("src.create_skinmap.extract_clip_embeddings") as mock_extract:
+        with patch("skinmap.pipeline.create_skinmap.extract_clip_embeddings") as mock_extract:
             mock_extract.return_value = (embs, embs.copy(), labels, [], df.copy())
 
-            from src.create_skinmap import extract_or_load_embeddings
-            from src.skinmap.models.loaders import ModelInfo
+            from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
+            from skinmap.models.loaders import ModelInfo
 
             mock_model = MagicMock()
             mock_processor = MagicMock()
@@ -259,7 +259,7 @@ class TestResultsSaving:
 
     def test_downstream_results_saving(self, tmp_path):
         """Test that downstream evaluation results are saved to CSV."""
-        from src.create_skinmap import _save_downstream_results
+        from skinmap.pipeline.create_skinmap import _save_downstream_results
 
         # Create mock results structure
         results = {
@@ -366,9 +366,9 @@ class TestDimensionConsistency:
         """Test that dimension mismatches in fusion pipeline raise clear errors."""
         from unittest.mock import MagicMock, patch
 
-        from src.skinmap.cache.manager import EmbeddingCache
-        from src.skinmap.embeddings.fusion import combine_embeddings_simple
-        from src.skinmap.models.loaders import ModelInfo
+        from skinmap.cache.manager import EmbeddingCache
+        from skinmap.embeddings.fusion import combine_embeddings_simple
+        from skinmap.models.loaders import ModelInfo
 
         cache = EmbeddingCache(str(tmp_path))
 
@@ -409,7 +409,7 @@ class TestDimensionConsistency:
                 )
 
         with patch(
-            "src.skinmap.embeddings.fusion.extract_ssl_embeddings"
+            "skinmap.embeddings.fusion.extract_ssl_embeddings"
         ) as mock_extract:
             mock_extract.side_effect = mock_extract_side_effect
 
@@ -429,7 +429,7 @@ class TestDimensionConsistency:
 
     def test_embeddings_dataframe_consistency_after_corrupted_filtering(self, tmp_path):
         """Test that embeddings and dataframe have same length after filtering corrupted samples."""
-        from src.skinmap.embeddings.extractors import _filter_corrupted
+        from skinmap.embeddings.extractors import _filter_corrupted
 
         # Setup: 10 samples, 2 corrupted (indices 3 and 7)
         n_total = 10
@@ -482,7 +482,7 @@ class TestConfigSerialization:
         """Test that save_outputs correctly serializes config.json with numpy types."""
         from unittest.mock import MagicMock
 
-        from src.create_skinmap import save_outputs
+        from skinmap.pipeline.create_skinmap import save_outputs
 
         # Create mock args with various types
         mock_args = MagicMock()
@@ -545,7 +545,7 @@ class TestConfigSerialization:
         """Test that projector_config.json serializes correctly with numpy arrays in whitening_stats."""
         from unittest.mock import MagicMock, patch
 
-        from src.create_skinmap import save_outputs
+        from skinmap.pipeline.create_skinmap import save_outputs
 
         # Create mock args with projector enabled
         mock_args = MagicMock()
@@ -651,7 +651,7 @@ class TestIntegrationScenarios:
         mock_args = MagicMock()
         mock_args.output_dir = str(tmp_path)
 
-        from src.create_skinmap import extract_or_load_embeddings
+        from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
 
         # Test: Next run should FAIL, not try to recover
         with pytest.raises(RuntimeError, match="dataframe is missing"):

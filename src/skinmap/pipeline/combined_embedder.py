@@ -14,9 +14,9 @@ import torch
 from PIL import Image
 from torch import nn
 
-from src.core.src.pkg.embedder import Embedder
-from src.create_skinmap import SSL_MODEL_NAMES, get_imagenet_transform
-from src.train_clip import load_model_and_processor
+from core.src.pkg.embedder import Embedder
+from skinmap.pipeline.create_skinmap import SSL_MODEL_NAMES, get_imagenet_transform
+from skinmap.pipeline.train_clip import load_model_and_processor
 
 try:
     import joblib
@@ -423,7 +423,7 @@ class CombinedEmbeddingPipeline:
             return
 
         try:
-            from src.embedding_fusion import BuildSpec, build_model
+            from skinmap.pipeline.embedding_fusion import BuildSpec, build_model
 
             # Calculate actual text input dimension from CLIP models
             # text_dim in config is the OUTPUT dimension, but we need INPUT dimension
@@ -604,7 +604,7 @@ class CombinedEmbeddingPipeline:
 
     def _apply_projector_pipeline(self, features: List[np.ndarray]) -> np.ndarray:
         """Apply whitening + projector to per-model features."""
-        from src.embedding_fusion import apply_whiten, l2_normalize
+        from skinmap.pipeline.embedding_fusion import apply_whiten, l2_normalize
 
         # Check if whitening was used (mu/W arrays present)
         has_whitening = (
@@ -662,7 +662,7 @@ class CombinedEmbeddingPipeline:
 
         if self.projector_model is not None and self.whitening_stats is not None:
             # Projector pipeline: concatenate text from CLIP models only
-            from src.embedding_fusion import apply_whiten, l2_normalize
+            from skinmap.pipeline.embedding_fusion import apply_whiten, l2_normalize
 
             clip_indices = self.whitening_stats.get("clip_indices", [])
             if not clip_indices:

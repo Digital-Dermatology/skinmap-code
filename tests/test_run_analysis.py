@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.run_analysis import (
+from skinmap.pipeline.run_analysis import (
     COUNTRY_TO_CONTINENT,
     MAX_CATEGORIES_DISPLAY,
     consolidate_categories,

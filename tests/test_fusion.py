@@ -18,11 +18,11 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 
-from src.skinmap.cache.manager import EmbeddingCache
-from src.skinmap.embeddings.fusion import (
+from skinmap.cache.manager import EmbeddingCache
+from skinmap.embeddings.fusion import (
     combine_embeddings_simple as _combine_embeddings_simple,
 )
-from src.skinmap.models.loaders import ModelInfo
+from skinmap.models.loaders import ModelInfo
 
 
 def combine_embeddings_simple(*args, **kwargs):

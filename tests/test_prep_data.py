@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.prep_data import (
+from skinmap.pipeline.prep_data import (
     annotate_icd,
     clean_condition_series,
     harmonize_age,

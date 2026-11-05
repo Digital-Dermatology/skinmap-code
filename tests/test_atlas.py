@@ -21,7 +21,7 @@ import pandas as pd
 import pytest
 from PIL import Image
 
-from src.skinmap.visualization.atlas import ATLAS_VECTOR_COLUMN, generate_atlas
+from skinmap.visualization.atlas import ATLAS_VECTOR_COLUMN, generate_atlas
 
 
 def _make_args(**overrides):

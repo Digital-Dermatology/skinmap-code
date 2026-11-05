@@ -25,33 +25,33 @@ import wandb
 from loguru import logger
 
 # Import functions from other modules
-from src.core.src.datasets.helper import DatasetName, get_dataset
-from src.core.src.pkg.embedder import Embedder
-from src.embedding_fusion import BuildSpec, build_model
+from core.src.datasets.helper import DatasetName, get_dataset
+from core.src.pkg.embedder import Embedder
+from skinmap.pipeline.embedding_fusion import BuildSpec, build_model
 
 # Import refactored skinmap modules
-from src.skinmap.cache.manager import CacheConfig, EmbeddingCache
-from src.skinmap.data.preprocessing import normalize_multilabel_columns
-from src.skinmap.data.transforms import get_imagenet_transform
-from src.skinmap.embeddings.extractors import (
+from skinmap.cache.manager import CacheConfig, EmbeddingCache
+from skinmap.data.preprocessing import normalize_multilabel_columns
+from skinmap.data.transforms import get_imagenet_transform
+from skinmap.embeddings.extractors import (
     extract_clip_embeddings,
     extract_ssl_embeddings,
 )
-from src.skinmap.embeddings.fusion import combine_embeddings_simple
-from src.skinmap.embeddings.projector import extract_combined_embeddings_with_projector
-from src.skinmap.evaluation.downstream import (
+from skinmap.embeddings.fusion import combine_embeddings_simple
+from skinmap.embeddings.projector import extract_combined_embeddings_with_projector
+from skinmap.evaluation.downstream import (
     evaluate_downstream_with_balancing_comparison,
     evaluate_image_dataset,
 )
-from src.skinmap.models.loaders import SSL_MODEL_NAMES, ModelInfo, load_multiple_models
-from src.skinmap.utils.metadata import (
+from skinmap.models.loaders import SSL_MODEL_NAMES, ModelInfo, load_multiple_models
+from skinmap.utils.metadata import (
     evaluate_metadata_with_balancing_comparison,
     predict_missing_metadata,
     predict_random_baseline_metadata,
 )
-from src.skinmap.utils.metrics import compute_learned_metric_transformation
-from src.skinmap.visualization.atlas import generate_atlas
-from src.train_clip import load_model_and_processor, set_seed, setup_logger
+from skinmap.utils.metrics import compute_learned_metric_transformation
+from skinmap.visualization.atlas import generate_atlas
+from skinmap.pipeline.train_clip import load_model_and_processor, set_seed, setup_logger
 
 # Re-export for backward compatibility with combined_embedder.py
 __all__ = ["SSL_MODEL_NAMES", "get_imagenet_transform"]
@@ -1744,7 +1744,7 @@ def main():
         logger.info("=" * 60)
         logger.info("GENERATING STATIC VISUALIZATION")
         logger.info("=" * 60)
-        from src.train_clip import plot_embeddings
+        from skinmap.pipeline.train_clip import plot_embeddings
 
         plot_embeddings(
             args=args,

@@ -36,7 +36,7 @@ logging.basicConfig(
 # Mappers copied from the notebook
 # --------------------------
 try:
-    from src.core.src.datasets.helper import DatasetName, get_dataset
+    from core.src.datasets.helper import DatasetName, get_dataset
 except Exception:  # pragma: no cover - only used when loading datasets directly
     DatasetName = None  # type: ignore
     get_dataset = None  # type: ignore
@@ -1164,7 +1164,7 @@ def build_dataframe_from_datasets(
 ) -> pd.DataFrame:
     if get_dataset is None or DatasetName is None:
         raise ImportError(
-            "Dataset loader is unavailable; ensure src.core.src.datasets.helper is importable."
+            "Dataset loader is unavailable; ensure core.src.datasets.helper is importable."
         )
 
     # Create ISIC attribution lookup for datasets that need it (e.g., HAM10000)

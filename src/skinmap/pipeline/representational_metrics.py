@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from src.analysis_plus import l2_normalize
+from skinmap.pipeline.analysis_plus import l2_normalize
 
 
 def nature_style():

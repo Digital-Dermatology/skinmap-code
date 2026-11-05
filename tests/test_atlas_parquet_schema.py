@@ -28,7 +28,7 @@ from numba.core import config as numba_config
 numba_config.CACHING = False
 numba_config.CACHE_DIR = str(NUMBA_CACHE_DIR)
 
-from src.skinmap.visualization.atlas import ATLAS_VECTOR_COLUMN, generate_atlas
+from skinmap.visualization.atlas import ATLAS_VECTOR_COLUMN, generate_atlas
 
 
 def test_atlas_parquet_schema_efficiency(tmp_path):

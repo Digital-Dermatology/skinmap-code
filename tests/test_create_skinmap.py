@@ -3,12 +3,12 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from src.create_skinmap import (
+from skinmap.pipeline.create_skinmap import (
     generate_run_name,
     load_cached_separability_results,
     reuse_cached_metadata_predictions,
 )
-from src.skinmap.cache.manager import get_single_model_cache_path
+from skinmap.cache.manager import get_single_model_cache_path
 
 
 def test_reuse_cached_metadata_predictions_success(tmp_path):

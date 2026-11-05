@@ -7,13 +7,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.skinmap.evaluation.downstream import (
+from skinmap.evaluation.downstream import (
     evaluate_downstream_with_balancing_comparison,
 )
 
 # Test imports
-from src.skinmap.utils.balancing import balance_dataset
-from src.skinmap.utils.metadata import evaluate_metadata_with_balancing_comparison
+from skinmap.utils.balancing import balance_dataset
+from skinmap.utils.metadata import evaluate_metadata_with_balancing_comparison
 
 
 def test_balance_dataset():

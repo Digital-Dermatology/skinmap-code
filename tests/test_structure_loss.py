@@ -6,7 +6,7 @@ This module tests that the fix for cross-model correlation preservation works co
 import pytest
 import torch
 
-from src.skinmap.loss.clip_loss import CLIPLoss, hierarchical_consistency_reg
+from skinmap.loss.clip_loss import CLIPLoss, hierarchical_consistency_reg
 
 
 class TestHierarchicalConsistencyReg:

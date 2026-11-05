@@ -18,8 +18,8 @@ import numpy as np
 import pytest
 from sklearn.linear_model import SGDClassifier
 
-import src.skinmap.utils.metrics as metrics_mod
-from src.skinmap.utils.metrics import compute_learned_metric_transformation
+import skinmap.utils.metrics as metrics_mod
+from skinmap.utils.metrics import compute_learned_metric_transformation
 
 
 class TestBinaryClassification:

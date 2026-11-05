@@ -17,7 +17,7 @@ from sklearn.metrics import (
     mean_absolute_error,
 )
 
-from src.skinmap.utils.bootstrap import (
+from skinmap.utils.bootstrap import (
     bootstrap_confidence_interval,
     compute_classification_metrics_with_bootstrap,
     compute_regression_metrics_with_bootstrap,

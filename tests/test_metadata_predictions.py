@@ -12,7 +12,7 @@ Tests cover:
 import pandas as pd
 import pytest
 
-from src.create_skinmap import reuse_cached_metadata_predictions
+from skinmap.pipeline.create_skinmap import reuse_cached_metadata_predictions
 
 
 class TestReuseMetadataPredictions:

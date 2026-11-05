@@ -14,7 +14,7 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-from src.analysis_plus import dataset_domain_shift, l2_normalize, yearly_novelty
+from skinmap.pipeline.analysis_plus import dataset_domain_shift, l2_normalize, yearly_novelty
 
 AGE_BINS = [0, 18, 30, 50, 70, 120]
 AGE_LABELS = ["0-17", "18-29", "30-49", "50-69", "70+"]

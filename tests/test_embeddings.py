@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 from PIL import Image
 
-from src.skinmap.embeddings.extractors import (
+from skinmap.embeddings.extractors import (
     ImageDataset,
     _filter_corrupted,
     extract_clip_embeddings,

@@ -13,7 +13,7 @@ from loguru import logger
 from PIL import Image
 from tqdm import tqdm
 
-from src.skinmap.constants import MULTILABEL_COLUMNS
+from skinmap.constants import MULTILABEL_COLUMNS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 

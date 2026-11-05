@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from src.hole_detection.eff_resistance import (
+from skinmap.hole_detection.eff_resistance import (
     EffectiveResistancePHDetector,
     effective_resistance_distance,
 )

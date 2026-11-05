@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import torch
 
-from src.embedding_fusion import (
+from skinmap.pipeline.embedding_fusion import (
     ImageTextModel,
     LinearProjector,
     MLPProjector,
@@ -339,7 +339,7 @@ class TestValidateEpoch:
 
     def test_perfect_alignment_100_percent_recall(self):
         """Test that perfect alignment gives 100% recall@1."""
-        from src.skinmap.embeddings.projector import validate_epoch
+        from skinmap.embeddings.projector import validate_epoch
 
         torch.manual_seed(42)
 
@@ -383,7 +383,7 @@ class TestValidateEpoch:
 
     def test_identity_projection_perfect_recall(self):
         """Test that identity-like projection gives near-perfect recall."""
-        from src.skinmap.embeddings.projector import validate_epoch
+        from skinmap.embeddings.projector import validate_epoch
 
         torch.manual_seed(42)
 
@@ -428,7 +428,7 @@ class TestValidateEpoch:
 
     def test_shuffled_alignment_poor_recall(self):
         """Test that shuffled/misaligned embeddings give poor recall@1."""
-        from src.skinmap.embeddings.projector import validate_epoch
+        from skinmap.embeddings.projector import validate_epoch
 
         torch.manual_seed(42)
 
@@ -461,8 +461,8 @@ class TestValidateEpoch:
 
     def test_comparison_with_evaluate_recall_at_k(self):
         """Test that validate_epoch gives same i2t recall as evaluate_recall_at_k."""
-        from src.embedding_fusion import evaluate_recall_at_k
-        from src.skinmap.embeddings.projector import validate_epoch
+        from skinmap.pipeline.embedding_fusion import evaluate_recall_at_k
+        from skinmap.embeddings.projector import validate_epoch
 
         torch.manual_seed(42)
 
@@ -500,7 +500,7 @@ class TestValidateEpoch:
 
     def test_recall_monotonicity(self):
         """Test that recall@k is monotonically increasing with k."""
-        from src.skinmap.embeddings.projector import validate_epoch
+        from skinmap.embeddings.projector import validate_epoch
 
         torch.manual_seed(42)
 
@@ -530,7 +530,7 @@ class TestValidateEpoch:
 
     def test_symmetry_with_identical_embeddings(self):
         """Test that i2t and t2i give same results when image and text embeddings are identical."""
-        from src.skinmap.embeddings.projector import validate_epoch
+        from skinmap.embeddings.projector import validate_epoch
 
         torch.manual_seed(42)
 
@@ -565,7 +565,7 @@ class TestValidateEpoch:
 
     def test_small_batch_size(self):
         """Test validation with very small batches."""
-        from src.skinmap.embeddings.projector import validate_epoch
+        from skinmap.embeddings.projector import validate_epoch
 
         torch.manual_seed(42)
 

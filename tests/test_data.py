@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from src.skinmap.data.preprocessing import (
+from skinmap.data.preprocessing import (
     coerce_multilabel,
     create_thumbnail_column_parallel,
     get_stable_hash,
@@ -210,7 +210,7 @@ class TestGetStableHash:
 
     def test_absolute_paths_match_repo_relative(self, tmp_path, monkeypatch):
         """Absolute paths inside PROJECT_ROOT should hash identically to their relative form."""
-        from src.skinmap.data import preprocessing as prep_mod
+        from skinmap.data import preprocessing as prep_mod
 
         monkeypatch.setattr(prep_mod, "PROJECT_ROOT", tmp_path)
 

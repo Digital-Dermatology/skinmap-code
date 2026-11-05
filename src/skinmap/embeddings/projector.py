@@ -17,7 +17,7 @@ from loguru import logger
 from torch.utils.data import DataLoader, RandomSampler
 from tqdm import tqdm
 
-from src.embedding_fusion import (
+from skinmap.pipeline.embedding_fusion import (
     BuildSpec,
     DomainBalancedBatchSampler,
     PrecomputedDataset,

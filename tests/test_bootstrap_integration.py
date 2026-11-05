@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.skinmap.utils.metadata import predict_missing_metadata
+from skinmap.utils.metadata import predict_missing_metadata
 
 
 class TestMetadataPredictionWithBootstrap:
@@ -282,7 +282,7 @@ class TestDownstreamEvaluationWithBootstrap:
 
     def test_classification_task_with_bootstrap(self, mock_dataset_with_metadata):
         """Test classification evaluation with bootstrap produces CI columns."""
-        from src.skinmap.evaluation.downstream import _evaluate_classification_task
+        from skinmap.evaluation.downstream import _evaluate_classification_task
 
         # Create sample embeddings
         X = np.random.randn(100, 128)
@@ -321,7 +321,7 @@ class TestDownstreamEvaluationWithBootstrap:
 
     def test_regression_task_with_bootstrap(self, mock_dataset_with_metadata):
         """Test regression evaluation with bootstrap produces CI columns."""
-        from src.skinmap.evaluation.downstream import _evaluate_regression_task
+        from skinmap.evaluation.downstream import _evaluate_regression_task
 
         # Create sample embeddings
         X = np.random.randn(100, 128)
@@ -359,7 +359,7 @@ class TestDownstreamEvaluationWithBootstrap:
 
     def test_multiple_classifiers_with_bootstrap(self, mock_dataset_with_metadata):
         """Test that all classifiers get bootstrap CIs."""
-        from src.skinmap.evaluation.downstream import _evaluate_classification_task
+        from skinmap.evaluation.downstream import _evaluate_classification_task
 
         X = np.random.randn(100, 128)
 
@@ -384,7 +384,7 @@ class TestDownstreamEvaluationWithBootstrap:
 
     def test_bootstrap_disabled_in_downstream(self, mock_dataset_with_metadata):
         """Test that without bootstrap, no CI columns in downstream results."""
-        from src.skinmap.evaluation.downstream import _evaluate_classification_task
+        from skinmap.evaluation.downstream import _evaluate_classification_task
 
         X = np.random.randn(100, 128)
 
@@ -413,7 +413,7 @@ class TestBootstrapEndToEnd:
 
     def test_csv_output_includes_ci_columns(self, tmp_path):
         """Test that saved CSV files include CI columns when bootstrap is enabled."""
-        from src.skinmap.utils.metadata import predict_missing_metadata
+        from skinmap.utils.metadata import predict_missing_metadata
 
         # Create sample data
         np.random.seed(42)
@@ -451,7 +451,7 @@ class TestBootstrapEndToEnd:
 
     def test_bootstrap_with_minimal_data(self):
         """Test bootstrap works with minimal amount of data."""
-        from src.skinmap.utils.metadata import predict_missing_metadata
+        from skinmap.utils.metadata import predict_missing_metadata
 
         # Very small dataset (edge case)
         embeddings = np.random.randn(20, 32)
