@@ -147,3 +147,10 @@ def test_log_value_counts_summary_reports_key_groups(caplog):
     assert "fitzpatrick" in summaries
     assert "age" in summaries
     assert "origin" in summaries
+
+
+def test_harmonize_fitzpatrick_turns_unparsable_strings_into_nan():
+    result = harmonize_fitzpatrick(pd.Series(["II", "3", "not recorded"]))
+    assert result.iloc[0] == 2
+    assert result.iloc[1] == 3
+    assert pd.isna(result.iloc[2])

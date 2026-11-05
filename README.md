@@ -46,16 +46,15 @@ git clone --recursive https://github.com/Digital-Dermatology/skinmap-code.git
 cd skinmap-code
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -e ".[dev]"
 
 # Install pre-commit hooks
 pre-commit install
 ```
 
-> **Notes for local installs.** Run the pipeline scripts under `src/` from the repo
-> root with `PYTHONPATH=.` (they use `src.`-style imports), or use the Docker image
-> below (which presets `PYTHONPATH`). `faiss` is listed as `faiss-cpu`; for GPU FAISS
-> and the smoothest setup overall, use Docker. The `make` targets require `netstat`
+> **Notes for local installs.** `pip install -e .` installs the packages `skinmap` and
+> `core`, the second from the `src/core` submodule, so clone with `--recursive`.
+> `faiss` is listed as `faiss-cpu`; for GPU FAISS and the smoothest setup overall, use Docker. The `make` targets require `netstat`
 > (install `net-tools`). **Docker is the recommended, fully-configured path.**
 
 ### Docker Installation
@@ -71,18 +70,17 @@ make run_bash
 ## Quick Start
 
 The pipeline is keyed by `--model_name` (the teacher encoder); outputs are written
-under `assets/<model_name>/`. Run from the repo root with `PYTHONPATH=.` (or inside
-the Docker container, where it is preset).
+under `assets/<model_name>/`.
 
 > **Input.** `--data_csv` points to a CSV with at least an `img_path` column (path to
 > each image) and a `description` column (text caption / label). It is built from the
-> source datasets by `src/prep_data.py` — obtain the datasets under their own licenses
+> source datasets by `skinmap.pipeline.prep_data` — obtain the datasets under their own licenses
 > first (see [Reproducing the Atlas](#reproducing-the-atlas)).
 
 ### 1. Build the embedding atlas
 
 ```bash
-PYTHONPATH=. python src/create_skinmap.py \
+python -m skinmap.pipeline.create_skinmap \
   --model_name suinleelab/monet \
   --data_csv ./assets/data.csv \
   --use_atlas
@@ -93,7 +91,7 @@ PYTHONPATH=. python src/create_skinmap.py \
 ### 2. Run the analysis suite
 
 ```bash
-PYTHONPATH=. python src/run_analysis.py --model_name suinleelab/monet
+python -m skinmap.pipeline.run_analysis --model_name suinleelab/monet
 # reads assets/<model_name>/{atlas_input.parquet, embeddings/}
 # writes results to assets/<model_name>/analysis/
 ```
@@ -151,10 +149,10 @@ For advanced users, run training commands directly inside the Docker container:
 
 ```bash
 # Single GPU
-python src/train_clip.py --data_csv ./assets/data.csv --epochs 10 --batch_size 256 --fp16
+python -m skinmap.pipeline.train_clip --data_csv ./assets/data.csv --epochs 10 --batch_size 256 --fp16
 
 # Multi-GPU with torchrun
-torchrun --nproc_per_node=2 src/train_clip.py --data_csv ./assets/data.csv --epochs 10 --batch_size 256 --fp16
+torchrun --nproc_per_node=2 -m skinmap.pipeline.train_clip --data_csv ./assets/data.csv --epochs 10 --batch_size 256 --fp16
 ```
 
 ## Analysis Metrics
@@ -171,7 +169,7 @@ Metrics include:
 Run the full analysis suite:
 
 ```bash
-PYTHONPATH=. python src/run_analysis.py --model_name <model_name>
+python -m skinmap.pipeline.run_analysis --model_name <model_name>
 ```
 
 For hole detection using topological data analysis:
@@ -265,11 +263,13 @@ Model card: [huggingface.co/Digital-Dermatology/SkinMap](https://huggingface.co/
 
 All 29 source datasets are publicly available (see the paper's Supplementary
 Information for the full list and access terms); we do not redistribute any source
-images or derived data. To reproduce the paper's atlas:
+images or derived data. To reproduce the paper's atlas, use the code at tag
+[`v1.0.0`](https://github.com/Digital-Dermatology/skinmap-code/tree/v1.0.0). Later versions add datasets and
+change how body regions are grouped.
 
 1. **Obtain the datasets** from their original sources under their own licenses.
 2. **Build the input CSV** (`data.csv`: `img_path`, `description`, and any available
-   metadata) with `src/prep_data.py`.
+   metadata) with `skinmap.pipeline.prep_data`.
 3. **Encode with the released model.** The paper's atlas uses the full **12-teacher
    ensemble + trained projector**, published on the Hugging Face Hub
    ([Digital-Dermatology/SkinMap](https://huggingface.co/Digital-Dermatology/SkinMap));

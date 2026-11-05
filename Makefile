@@ -153,7 +153,7 @@ train_clip: _build ##@Training Train CLIP model (automatically uses all availabl
 	@echo "    Learning rate: $(TRAIN_LR)"
 	@if [ $(NUM_GPUS) -gt 1 ]; then \
 		echo "    Using distributed training with torchrun"; \
-		$(DOCKER_CMD) bash -c "torchrun --nproc_per_node=$(NUM_GPUS) --master_port=29500 src/train_clip.py \
+		$(DOCKER_CMD) bash -c "torchrun --nproc_per_node=$(NUM_GPUS) --master_port=29500 -m skinmap.pipeline.train_clip \
 			--data_csv $(TRAIN_DATA_CSV) \
 			--model_name $(TRAIN_MODEL) \
 			--epochs $(TRAIN_EPOCHS) \
@@ -163,7 +163,7 @@ train_clip: _build ##@Training Train CLIP model (automatically uses all availabl
 			$(TRAIN_EXTRA_ARGS)"; \
 	else \
 		echo "    Using single GPU training"; \
-		$(DOCKER_CMD) bash -c "python src/train_clip.py \
+		$(DOCKER_CMD) bash -c "python -m skinmap.pipeline.train_clip \
 			--data_csv $(TRAIN_DATA_CSV) \
 			--model_name $(TRAIN_MODEL) \
 			--epochs $(TRAIN_EPOCHS) \
