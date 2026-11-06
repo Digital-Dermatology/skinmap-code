@@ -3,7 +3,6 @@
 import json
 import os
 import subprocess
-from pathlib import Path
 from typing import Optional
 
 import joblib
@@ -14,7 +13,7 @@ import pyarrow.parquet as pq
 import umap
 from loguru import logger
 
-from ..data.preprocessing import create_thumbnail_column_parallel
+from ..data.preprocessing import PROJECT_ROOT, create_thumbnail_column_parallel
 from ..models.loaders import SSL_MODEL_NAMES
 
 ATLAS_VECTOR_COLUMN = "embedding"
@@ -377,7 +376,7 @@ def _create_atlas_config(
     config = {
         "version": 1,
         "output_dir": output_dir,
-        "skinmap_root": str(Path(__file__).resolve().parent.parent.parent.parent),
+        "skinmap_root": str(PROJECT_ROOT),
         "models": [
             {
                 "source": model_name.strip(),

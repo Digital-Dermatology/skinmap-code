@@ -208,6 +208,22 @@ class TestGetStableHash:
 
         assert hash_one == hash_two
 
+    def test_project_root_follows_skinmap_root(self, monkeypatch, tmp_path):
+        """SKINMAP_ROOT sets the project root, and without it the working directory does."""
+        import importlib
+
+        import skinmap.data.preprocessing as prep_mod
+
+        try:
+            monkeypatch.setenv("SKINMAP_ROOT", str(tmp_path))
+            assert importlib.reload(prep_mod).PROJECT_ROOT == tmp_path.resolve()
+            monkeypatch.delenv("SKINMAP_ROOT")
+            monkeypatch.chdir(tmp_path)
+            assert importlib.reload(prep_mod).PROJECT_ROOT == tmp_path.resolve()
+        finally:
+            monkeypatch.undo()
+            importlib.reload(prep_mod)
+
     def test_absolute_paths_match_repo_relative(self, tmp_path, monkeypatch):
         """Absolute paths inside PROJECT_ROOT should hash identically to their relative form."""
         from skinmap.data import preprocessing as prep_mod

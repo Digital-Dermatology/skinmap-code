@@ -15,7 +15,9 @@ from tqdm import tqdm
 
 from skinmap.constants import MULTILABEL_COLUMNS
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+# Absolute image paths under this folder hash relative to it, so thumbnail keys do not depend on
+# where the project is checked out. Run from the project root, or set SKINMAP_ROOT.
+PROJECT_ROOT = Path(os.environ.get("SKINMAP_ROOT") or Path.cwd()).resolve()
 
 
 def coerce_multilabel(value: Union[str, list, None, Any]) -> Optional[list[str]]:

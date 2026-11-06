@@ -174,8 +174,8 @@ class CombinedEmbeddingPipeline:
             seen.add(key)
             if not candidate.exists():
                 continue
-            # The repository root holds this file under src/skinmap/pipeline.
-            if (candidate / "src" / "skinmap" / "pipeline" / "combined_embedder.py").exists():
+            # The project root holds the assets folder.
+            if (candidate / "assets").is_dir():
                 return candidate
 
         logger.warning(
