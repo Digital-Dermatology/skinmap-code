@@ -1,9 +1,11 @@
 """Tests for Embedding Atlas integration."""
 
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import joblib
 
 # Disable numba caching before importing UMAP-dependent modules to avoid filesystem issues
 os.environ.setdefault("NUMBA_DISABLE_CACHING", "1")
@@ -20,8 +22,10 @@ import numpy as np
 import pandas as pd
 import pytest
 from PIL import Image
+from sklearn.decomposition import TruncatedSVD
 
-from src.skinmap.visualization.atlas import ATLAS_VECTOR_COLUMN, generate_atlas
+from skinmap.pipeline.create_skinmap import save_outputs
+from skinmap.visualization.atlas import ATLAS_VECTOR_COLUMN, generate_atlas
 
 
 def _make_args(**overrides):
@@ -79,6 +83,7 @@ def test_generate_atlas_creates_required_artifacts(tmp_path):
         output_dir=str(tmp_path),
         args=args,
         store_vectors=False,
+        launch_cli=False,
         force_recompute=True,
     )
 
@@ -95,6 +100,18 @@ def test_generate_atlas_creates_required_artifacts(tmp_path):
     assert thumb_dir.is_dir()
     assert any(thumb_dir.iterdir())
 
+    # Config contains artifact metadata compatible with Embedding Atlas CLI
+    config_path = tmp_path / "embedding_pipeline_config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    assert config["artifacts"]["atlas_parquet"] == "atlas_input.parquet"
+    assert config["vector"]["dimension"] == image_embeddings.shape[1]
+    assert config["svd"]["components"] == args.svd_components
+    assert "umap" in config
+    umap_rel = config["umap"]["model"]
+    assert (tmp_path / umap_rel).exists()
+
 
 @pytest.mark.parametrize("store_vectors", [True, False])
 def test_generate_atlas_vector_storage(tmp_path, store_vectors):
@@ -108,6 +125,7 @@ def test_generate_atlas_vector_storage(tmp_path, store_vectors):
         output_dir=str(tmp_path),
         args=args,
         store_vectors=store_vectors,
+        launch_cli=False,
         force_recompute=True,
     )
 
@@ -130,6 +148,7 @@ def test_generate_atlas_reuses_existing_parquet(tmp_path):
         output_dir=str(tmp_path),
         args=args,
         store_vectors=False,
+        launch_cli=False,
         force_recompute=True,
     )
 
@@ -142,6 +161,7 @@ def test_generate_atlas_reuses_existing_parquet(tmp_path):
         output_dir=str(tmp_path),
         args=args,
         store_vectors=False,
+        launch_cli=False,
         force_recompute=False,
         reuse_existing=True,
     )
@@ -161,6 +181,7 @@ def test_generate_atlas_force_recompute_preserves_existing_thumbnails(tmp_path):
         output_dir=str(tmp_path),
         args=args,
         store_vectors=False,
+        launch_cli=False,
         force_recompute=True,
     )
 
@@ -174,11 +195,88 @@ def test_generate_atlas_force_recompute_preserves_existing_thumbnails(tmp_path):
         output_dir=str(tmp_path),
         args=args,
         store_vectors=False,
+        launch_cli=False,
         force_recompute=True,
     )
 
     thumb_files_after = {p.name for p in thumb_dir.iterdir()}
     assert thumb_files.issubset(thumb_files_after)
+
+
+def test_embedding_pipeline_config_points_to_loadable_artifacts(tmp_path):
+    """Pipeline config should reference artifacts that can be loaded after saves."""
+    df, image_embeddings = _make_sample_inputs(tmp_path)
+    text_embeddings = np.random.randn(len(df), 10).astype(np.float32)
+    dataset_labels = np.zeros(len(df), dtype=np.int32)
+
+    # Fit tiny SVDs to act as saved artifacts
+    svd_image = TruncatedSVD(n_components=4, random_state=0).fit(
+        np.random.randn(32, image_embeddings.shape[1])
+    )
+    svd_text = TruncatedSVD(n_components=4, random_state=0).fit(
+        np.random.randn(32, text_embeddings.shape[1])
+    )
+
+    args = _make_args(
+        svd_components=4,
+        atlas_store_vectors=True,
+    )
+    # Extra fields used by save_outputs/persist_artifacts
+    args.model_path = None
+    args.use_trained_projector = False
+    args.projector_type = "linear"
+    args.projector_dim = 4
+    args.max_whitening_dim = 768
+    args.skip_whitening = False
+
+    artifacts = {
+        "svd_image_model": svd_image,
+        "svd_text_model": svd_text,
+    }
+
+    save_outputs(
+        df=df,
+        image_embeddings=image_embeddings,
+        text_embeddings=text_embeddings,
+        dataset_labels=dataset_labels,
+        corrupted_indices=[],
+        fusion_method="svd",
+        args=args,
+        output_dir=str(tmp_path),
+        run_name="test_run",
+        artifacts=artifacts,
+        model_names=[args.model_name],
+    )
+
+    # Atlas generation runs after artifacts are written so config references them
+    generate_atlas(
+        df=df,
+        image_embeddings=image_embeddings,
+        output_dir=str(tmp_path),
+        args=args,
+        store_vectors=True,
+        launch_cli=False,
+        force_recompute=True,
+    )
+
+    config_path = tmp_path / "embedding_pipeline_config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    image_svd_rel = config["svd"]["image"]
+    text_svd_rel = config["svd"]["text"]
+    assert image_svd_rel and text_svd_rel
+
+    # Stored artifacts must load and be usable
+    image_svd = joblib.load(tmp_path / image_svd_rel)
+    text_svd = joblib.load(tmp_path / text_svd_rel)
+    image_svd.transform(np.random.randn(2, image_embeddings.shape[1]))
+    text_svd.transform(np.random.randn(2, text_embeddings.shape[1]))
+
+    # UMAP model should also be loadable from config
+    umap_rel = config["umap"]["model"]
+    reducer = joblib.load(tmp_path / umap_rel)
+    reducer.transform(np.random.randn(2, image_embeddings.shape[1]))
 
 
 def test_generate_atlas_handles_mixed_string_numeric_columns(tmp_path):
@@ -226,6 +324,7 @@ def test_generate_atlas_handles_mixed_string_numeric_columns(tmp_path):
         output_dir=str(tmp_path),
         args=args,
         store_vectors=False,
+        launch_cli=False,
         force_recompute=True,
     )
 

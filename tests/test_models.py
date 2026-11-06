@@ -12,7 +12,7 @@ Critical tests for:
 import pytest
 import torch
 
-from src.skinmap.models.loaders import (
+from skinmap.models.loaders import (
     ModelInfo,
     load_multiple_models,
     normalize_model_tuple,
@@ -131,10 +131,10 @@ class TestLoadMultipleModels:
             return mock_clip_model, mock_processor
 
         # Mock the load function
-        import src.train_clip
+        import skinmap.pipeline.train_clip
 
         monkeypatch.setattr(
-            src.train_clip, "load_model_and_processor", mock_load_model_and_processor
+            skinmap.pipeline.train_clip, "load_model_and_processor", mock_load_model_and_processor
         )
 
         device = torch.device("cpu")
@@ -152,10 +152,10 @@ class TestLoadMultipleModels:
         def mock_load_model_and_processor(model_name, device, model_path=None):
             return mock_clip_model, mock_processor
 
-        import src.train_clip
+        import skinmap.pipeline.train_clip
 
         monkeypatch.setattr(
-            src.train_clip, "load_model_and_processor", mock_load_model_and_processor
+            skinmap.pipeline.train_clip, "load_model_and_processor", mock_load_model_and_processor
         )
 
         device = torch.device("cpu")
@@ -173,10 +173,10 @@ class TestLoadMultipleModels:
         def mock_load_model_and_processor(model_name, device):
             return mock_clip_model, mock_processor
 
-        import src.train_clip
+        import skinmap.pipeline.train_clip
 
         monkeypatch.setattr(
-            src.train_clip, "load_model_and_processor", mock_load_model_and_processor
+            skinmap.pipeline.train_clip, "load_model_and_processor", mock_load_model_and_processor
         )
 
         device = torch.device("cpu")
@@ -193,10 +193,10 @@ class TestLoadMultipleModels:
             # Return just model for SSL (no processor)
             return mock_ssl_model, None
 
-        import src.train_clip
+        import skinmap.pipeline.train_clip
 
         monkeypatch.setattr(
-            src.train_clip, "load_model_and_processor", mock_load_model_and_processor
+            skinmap.pipeline.train_clip, "load_model_and_processor", mock_load_model_and_processor
         )
 
         device = torch.device("cpu")
@@ -230,10 +230,10 @@ class TestModelLoadingErrors:
         def mock_load_model_and_processor(model_name, device):
             raise ValueError("Model not found")
 
-        import src.train_clip
+        import skinmap.pipeline.train_clip
 
         monkeypatch.setattr(
-            src.train_clip, "load_model_and_processor", mock_load_model_and_processor
+            skinmap.pipeline.train_clip, "load_model_and_processor", mock_load_model_and_processor
         )
 
         with pytest.raises(RuntimeError):
@@ -247,10 +247,10 @@ class TestModelLoadingErrors:
         def mock_load_model_and_processor(model_name, device):
             return mock_clip_model, mock_processor
 
-        import src.train_clip
+        import skinmap.pipeline.train_clip
 
         monkeypatch.setattr(
-            src.train_clip, "load_model_and_processor", mock_load_model_and_processor
+            skinmap.pipeline.train_clip, "load_model_and_processor", mock_load_model_and_processor
         )
 
         # Empty string splits to [""]
@@ -280,10 +280,10 @@ class TestModelDevicePlacement:
         def mock_load_model_and_processor(model_name, device, model_path=None):
             return MockModel(), mock_processor
 
-        import src.train_clip
+        import skinmap.pipeline.train_clip
 
         monkeypatch.setattr(
-            src.train_clip, "load_model_and_processor", mock_load_model_and_processor
+            skinmap.pipeline.train_clip, "load_model_and_processor", mock_load_model_and_processor
         )
 
         device = torch.device("cpu")
@@ -307,10 +307,10 @@ class TestEdgeCases:
             assert model_name.strip() == model_name
             return mock_clip_model, mock_processor
 
-        import src.train_clip
+        import skinmap.pipeline.train_clip
 
         monkeypatch.setattr(
-            src.train_clip, "load_model_and_processor", mock_load_model_and_processor
+            skinmap.pipeline.train_clip, "load_model_and_processor", mock_load_model_and_processor
         )
 
         device = torch.device("cpu")
@@ -324,10 +324,10 @@ class TestEdgeCases:
         def mock_load_model_and_processor(model_name, device, model_path=None):
             return mock_clip_model, mock_processor
 
-        import src.train_clip
+        import skinmap.pipeline.train_clip
 
         monkeypatch.setattr(
-            src.train_clip, "load_model_and_processor", mock_load_model_and_processor
+            skinmap.pipeline.train_clip, "load_model_and_processor", mock_load_model_and_processor
         )
 
         device = torch.device("cpu")

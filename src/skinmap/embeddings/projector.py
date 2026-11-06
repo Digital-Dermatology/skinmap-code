@@ -7,7 +7,7 @@ This module implements the learnable projection approach with proper handling of
 """
 
 import gc
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Sequence
 
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ from loguru import logger
 from torch.utils.data import DataLoader, RandomSampler
 from tqdm import tqdm
 
-from src.embedding_fusion import (
+from skinmap.pipeline.embedding_fusion import (
     BuildSpec,
     DomainBalancedBatchSampler,
     PrecomputedDataset,
@@ -48,6 +48,76 @@ def _normalize_teacher_blocks(z_cat: np.ndarray, dims: List[int]) -> np.ndarray:
         z_cat[:, start : start + dim] = l2_normalize(block, axis=1)
         start += dim
     return z_cat
+
+
+def _concat_free(arrays: List[np.ndarray]) -> np.ndarray:
+    """np.concatenate(arrays, axis=1) that frees each source block as it is copied
+    in, so the source list and the concatenated result are never both fully resident
+    (halves the peak memory). MUTATES `arrays` (entries set to None); callers must not
+    reuse the sources afterwards. Needed for the >1M-image atlas combine to fit RAM."""
+    n = arrays[0].shape[0]
+    total = int(sum(a.shape[1] for a in arrays))
+    out = np.empty((n, total), dtype=arrays[0].dtype)
+    col = 0
+    for i in range(len(arrays)):
+        w = arrays[i].shape[1]
+        out[:, col : col + w] = arrays[i]
+        col += w
+        arrays[i] = None  # free the source immediately
+    return out
+
+
+def _projector_cache_available(
+    cache: EmbeddingCache,
+    teacher_names: List[str],
+    projector_dim: int,
+    projector_type: str,
+    dims: List[int],
+) -> bool:
+    """Cheap check (no model load) of whether a COMPATIBLE trained projector is cached.
+
+    Lets the combine free the per-teacher whitened blocks right after z_cat is built:
+    those blocks are only consumed by the training-sample build, which is skipped when
+    a frozen projector is reused. Mirrors the path + config checks in
+    _try_load_trained_projector (kept in sync). Needed to fit the >1M-image, 12-teacher
+    combine in host RAM.
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    if len(teacher_names) == 1:
+        run = teacher_names[0].replace("assets/", "").replace("/", "_").replace("\\", "_")
+    else:
+        parts = []
+        for name in teacher_names:
+            if "/" in name:
+                if name.startswith("/") or name.startswith("."):
+                    parts.append("_".join(Path(name).parts[-2:]))
+                else:
+                    parts.append(name.replace("assets/", "").replace("/", "_"))
+            else:
+                parts.append(name)
+        run = "combined_" + "_".join(parts[:3])
+        if len(teacher_names) > 3:
+            run += f"_and_{len(teacher_names) - 3}_more"
+        run += "-trained_projector"
+    d = os.path.join(cache.output_dir, run, "embeddings")
+    if not (
+        os.path.exists(os.path.join(d, "projector_model.pth"))
+        and os.path.exists(os.path.join(d, "projector_config.json"))
+    ):
+        return False
+    try:
+        with open(os.path.join(d, "projector_config.json")) as f:
+            cfg = json.load(f)
+    except Exception:  # noqa: BLE001
+        return False
+    return (
+        cfg.get("projector_type") == projector_type
+        and cfg.get("projector_dim") == projector_dim
+        and cfg.get("teacher_dims", []) == list(dims)
+    )
 
 
 def _try_load_trained_projector(
@@ -167,7 +237,7 @@ def validate_epoch(
     loader: DataLoader,
     device: torch.device,
     structure_loss=None,
-    k_values: List[int] = [1, 5, 10],
+    k_values: Sequence[int] = (1, 5, 10),
     chunk_size: int = 1000,
 ) -> Dict[str, float]:
     """Validate model performance with retrieval metrics using chunked processing.
@@ -367,6 +437,7 @@ def _load_or_extract_per_model_embeddings(
     max_samples: Optional[int],
     dataset_col: str,
     num_workers: int,
+    text_col: Optional[str] = None,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], np.ndarray, List[int], pd.DataFrame]:
     """Load or extract per-model embeddings with caching.
 
@@ -386,19 +457,43 @@ def _load_or_extract_per_model_embeddings(
 
     if are_compatible:
         logger.info("Loading embeddings from compatible caches")
+        reference_df = cached_dfs[0]
         for i, model_info in enumerate(models):
             result = cache.load_single_model(model_info.model_path)
             if result is None:
                 raise RuntimeError(f"Failed to load cache for {model_info.model_path}")
 
-            image_embs, text_embs, labels, _ = result
+            image_embs, text_embs, labels, cached_df = result
+
+            # Reorder to match model 0's row order if needed
+            if (
+                i > 0
+                and "img_path" in cached_df.columns
+                and "img_path" in reference_df.columns
+            ):
+                if not cached_df["img_path"].equals(reference_df["img_path"]):
+                    logger.info(
+                        f"Reordering model {i+1} cache to match model 1 row order"
+                    )
+                    ref_order = {
+                        path: idx for idx, path in enumerate(reference_df["img_path"])
+                    }
+                    reorder_idx = [ref_order[p] for p in cached_df["img_path"]]
+                    # reorder_idx[j] = position in reference where cached row j should go
+                    # We need the inverse: for each reference position, which cached row
+                    inv_idx = np.argsort(reorder_idx)
+                    image_embs = image_embs[inv_idx]
+                    if text_embs is not None:
+                        text_embs = text_embs[inv_idx]
+                    labels = labels[inv_idx]
+
             all_image_embeddings.append(image_embs)
             all_text_embeddings.append(text_embs)
 
             if all_labels is None:
                 all_labels = labels
 
-        filtered_df = cached_dfs[0].copy()
+        filtered_df = reference_df.copy()
         logger.info(f"Loaded {len(models)} models from cache")
 
     else:
@@ -450,6 +545,7 @@ def _load_or_extract_per_model_embeddings(
                             max_samples,
                             dataset_col,
                             num_workers,
+                            text_col=text_col,
                         )
                     )
 
@@ -488,6 +584,7 @@ def extract_combined_embeddings_with_projector(
     max_samples: Optional[int] = None,
     dataset_col: str = "dataset_desc",
     num_workers: int = 4,
+    text_col: Optional[str] = None,
     # Projector parameters
     projector_dim: int = 768,
     projector_type: str = "linear",
@@ -572,7 +669,15 @@ def extract_combined_embeddings_with_projector(
         corrupted_images,
         filtered_df,
     ) = _load_or_extract_per_model_embeddings(
-        models, df, device, cache, batch_size, max_samples, dataset_col, num_workers
+        models,
+        df,
+        device,
+        cache,
+        batch_size,
+        max_samples,
+        dataset_col,
+        num_workers,
+        text_col=text_col,
     )
 
     teacher_names = [m.model_path for m in models]
@@ -671,11 +776,30 @@ def extract_combined_embeddings_with_projector(
             f"  Model {i+1}: {embs.shape[1]} → {whitened_image_embeddings[-1].shape[1]}"
         )
 
+    # Raw per-model embeddings are no longer needed after whitening (they are already
+    # cached on disk); free ~60GB of headroom before the big concatenation so the
+    # combine step fits in host RAM on a full-scale (>1M image) atlas.
+    del all_image_embeddings
+    gc.collect()
+
     # Concatenate whitened embeddings and normalize blocks
     z_cat = np.concatenate(whitened_image_embeddings, axis=1)
     z_cat = _normalize_teacher_blocks(z_cat, whitening_stats["dims"])
-    # Note: Don't delete whitened_image_embeddings yet - needed for training samples
     logger.info(f"Concatenated image embeddings: {z_cat.shape}")
+
+    # If a compatible frozen projector will be loaded, the per-teacher whitened blocks
+    # are dead weight (only the SKIPPED training-sample build reads them; Step 8 projects
+    # z_cat directly). Free ~50GB now so the text concat + inference fit host RAM at
+    # >1M-image / 12-teacher scale. Verified below: if it turns out the cache can't load,
+    # we raise rather than silently retrain on a corrupted space.
+    _reuse_frozen = _projector_cache_available(
+        cache, teacher_names, projector_dim, projector_type, whitening_stats["dims"]
+    )
+    if _reuse_frozen:
+        logger.info("Frozen projector cache present -> freeing whitened image blocks early")
+        del whitened_image_embeddings
+        whitened_image_embeddings = None
+        gc.collect()
 
     # Process text embeddings similarly
     whitened_text_embeddings = []
@@ -691,7 +815,7 @@ def extract_combined_embeddings_with_projector(
         else:
             whitened_text_embeddings.append(text_embs_normed)
 
-    text_concat = np.concatenate(whitened_text_embeddings, axis=1)
+    text_concat = _concat_free(whitened_text_embeddings)  # frees each block as concatenated
     del whitened_text_embeddings
     del clip_text_embeddings
     gc.collect()
@@ -700,9 +824,17 @@ def extract_combined_embeddings_with_projector(
     # Step 4: Initialize projector with PCA
     logger.info(f"Step 4: Initializing projector with PCA (dim={projector_dim})")
 
-    if pca_init_samples and len(z_cat) > pca_init_samples:
+    # When reusing a frozen projector, the PCA only seeds the init weights, which are
+    # then OVERWRITTEN by the loaded checkpoint -> its sample size is irrelevant to the
+    # result. Cap it small so the SVD doesn't OOM on the wide 12-teacher z_cat at atlas
+    # scale (result-identical to the full-sample PCA in the reuse path).
+    _pca_n = pca_init_samples
+    if _reuse_frozen:
+        _pca_n = min(pca_init_samples or len(z_cat), 4000)
+
+    if _pca_n and len(z_cat) > _pca_n:
         rng = np.random.default_rng(42)
-        sample_indices = rng.choice(len(z_cat), size=pca_init_samples, replace=False)
+        sample_indices = rng.choice(len(z_cat), size=_pca_n, replace=False)
         z_cat_sample = z_cat[sample_indices]
         text_concat_sample = text_concat[sample_indices]
     else:
@@ -739,6 +871,16 @@ def extract_combined_embeddings_with_projector(
         teacher_names,
     )
 
+    # We freed the whitened image blocks early on the strength of _reuse_frozen; if the
+    # load actually failed, retraining is both impossible (blocks are gone) and WRONG
+    # (would corrupt the frozen 1024-d space). Fail loudly instead.
+    if _reuse_frozen and not trained_projector_loaded:
+        raise RuntimeError(
+            "A compatible frozen projector cache was detected but failed to load. "
+            "Refusing to retrain (that would corrupt the frozen 1024-d space the decoder "
+            "and steering depend on). Fix the projector cache and re-run."
+        )
+
     if trained_projector_loaded:
         logger.info("=" * 60)
         logger.info("LOADED TRAINED PROJECTOR FROM CACHE - SKIPPING TRAINING")
@@ -755,7 +897,11 @@ def extract_combined_embeddings_with_projector(
     logger.info("Step 6: Preparing training dataset with pre-whitened embeddings")
 
     samples = []
-    for idx in range(len(z_cat)):
+    # Training samples are only consumed to TRAIN the projector. When a frozen projector
+    # is reused, Step 8 projects z_cat directly, the whitened blocks were already freed
+    # above, and building 1M+ Sample objects would be pure waste (+ OOM). Skip. Gated on
+    # _reuse_frozen (not trained_projector_loaded) so it matches the early free exactly.
+    for idx in (range(len(z_cat)) if not _reuse_frozen else []):
         # Store PRE-WHITENED embeddings (not original!)
         teacher_embs_dict = {
             teacher_names[i]: whitened_image_embeddings[i][idx]
@@ -778,8 +924,10 @@ def extract_combined_embeddings_with_projector(
         )
         samples.append(sample)
 
-    # Now safe to delete whitened_image_embeddings since samples are created
-    del whitened_image_embeddings
+    # Now safe to delete whitened_image_embeddings since samples are created (already
+    # freed above when reusing a frozen projector).
+    if whitened_image_embeddings is not None:
+        del whitened_image_embeddings
     gc.collect()
 
     logger.info(f"Created {len(samples)} samples")

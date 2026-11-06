@@ -10,7 +10,7 @@ Tests cover:
 import numpy as np
 import pandas as pd
 
-from src.skinmap.cache.manager import CacheConfig, EmbeddingCache
+from skinmap.cache.manager import CacheConfig, EmbeddingCache
 
 
 class TestCacheConfig:

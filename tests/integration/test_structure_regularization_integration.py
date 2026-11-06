@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import torch
 
-from src.embedding_fusion import (
+from skinmap.pipeline.embedding_fusion import (
     BuildSpec,
     PrecomputedDataset,
     Sample,
@@ -18,7 +18,7 @@ from src.embedding_fusion import (
     make_collate,
     train_one_epoch,
 )
-from src.skinmap.loss.clip_loss import CLIPLoss
+from skinmap.loss.clip_loss import CLIPLoss
 
 
 class TestStructureRegularizationIntegration:
@@ -220,6 +220,7 @@ class TestStructureRegularizationIntegration:
         This verifies that the fix achieves the intended goal.
         """
         dims = synthetic_embeddings["dims"]
+        synthetic_embeddings["image_embeddings"]
 
         # Create structured embeddings where each model has distinct patterns
         n_samples = 100

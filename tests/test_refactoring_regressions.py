@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 from PIL import Image
 
-from src.skinmap.data.preprocessing import (
+from skinmap.data.preprocessing import (
     create_thumbnail,
     create_thumbnail_column_parallel,
     get_stable_hash,
@@ -31,7 +31,7 @@ class TestBackwardCompatibilityExports:
 
     def test_ssl_model_names_export(self):
         """Test that SSL_MODEL_NAMES can be imported from create_skinmap."""
-        from src.create_skinmap import SSL_MODEL_NAMES
+        from skinmap.pipeline.create_skinmap import SSL_MODEL_NAMES
 
         assert SSL_MODEL_NAMES is not None
         assert isinstance(SSL_MODEL_NAMES, list)
@@ -41,7 +41,7 @@ class TestBackwardCompatibilityExports:
 
     def test_get_imagenet_transform_export(self):
         """Test that get_imagenet_transform can be imported from create_skinmap."""
-        from src.create_skinmap import get_imagenet_transform
+        from skinmap.pipeline.create_skinmap import get_imagenet_transform
 
         assert get_imagenet_transform is not None
         assert callable(get_imagenet_transform)
@@ -57,7 +57,7 @@ class TestBackwardCompatibilityExports:
         This is the actual use case that broke after refactoring.
         """
         try:
-            from src.create_skinmap import SSL_MODEL_NAMES, get_imagenet_transform
+            from skinmap.pipeline.create_skinmap import SSL_MODEL_NAMES, get_imagenet_transform
 
             # If we get here, the imports worked
             assert SSL_MODEL_NAMES is not None
@@ -70,12 +70,12 @@ class TestBackwardCompatibilityExports:
 
     def test_exports_match_modular_sources(self):
         """Test that re-exported symbols match their modular sources."""
-        from src.create_skinmap import SSL_MODEL_NAMES as exported_ssl_names
-        from src.create_skinmap import get_imagenet_transform as exported_transform
-        from src.skinmap.data.transforms import (
+        from skinmap.pipeline.create_skinmap import SSL_MODEL_NAMES as exported_ssl_names
+        from skinmap.pipeline.create_skinmap import get_imagenet_transform as exported_transform
+        from skinmap.data.transforms import (
             get_imagenet_transform as source_transform,
         )
-        from src.skinmap.models.loaders import SSL_MODEL_NAMES as source_ssl_names
+        from skinmap.models.loaders import SSL_MODEL_NAMES as source_ssl_names
 
         # Verify they're the same objects (not copies)
         assert exported_ssl_names is source_ssl_names
@@ -268,7 +268,7 @@ class TestAtlasParquetGeneration:
 
         This is an integration test for the complete bug scenario.
         """
-        from src.skinmap.data.preprocessing import create_thumbnail_column_parallel
+        from skinmap.data.preprocessing import create_thumbnail_column_parallel
 
         # Create test data
         n_samples = 10

@@ -26,6 +26,10 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+# Single source of truth for ICD mapping/annotation (re-exported below for the
+# rebuild pipeline and tests that import them from skinmap.pipeline.prep_data).
+from skinmap.icd_mapping import annotate_icd, load_icd_mapping  # noqa: F401
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -36,7 +40,7 @@ logging.basicConfig(
 # Mappers copied from the notebook
 # --------------------------
 try:
-    from src.core.src.datasets.helper import DatasetName, get_dataset
+    from core.src.datasets.helper import DatasetName, get_dataset
 except Exception:  # pragma: no cover - only used when loading datasets directly
     DatasetName = None  # type: ignore
     get_dataset = None  # type: ignore
@@ -62,6 +66,10 @@ release_mapper = (
         DatasetName.DDI: 2022,
         DatasetName.DAFFODIL: 2024,
         DatasetName.DERMACON_IN: 2025,
+        DatasetName.MILK10K: 2025,
+        DatasetName.BALD: 2025,
+        DatasetName.DERM12345: 2024,
+        DatasetName.MIDAS: 2024,
     }
     if DatasetName is not None
     else {}
@@ -92,6 +100,13 @@ modality_mapper = (
         DatasetName.DDI: "clinical",
         DatasetName.DAFFODIL: "dermoscopy",
         DatasetName.DERMACON_IN: "clinical",
+        # MILK10k and MIDAS are multimodal; the loader sets a per-image
+        # `modality` column (read first by build_dataframe_from_datasets).
+        # These entries are only the fallback when that column is absent.
+        DatasetName.MILK10K: "dermoscopy",
+        DatasetName.BALD: "dermoscopy",
+        DatasetName.DERM12345: "dermoscopy",
+        DatasetName.MIDAS: "clinical",
     }
     if DatasetName is not None
     else {}
@@ -101,7 +116,6 @@ modality_mapper_name = {
     "DermNet": "clinical",
     "CAN2000": "clinical",
     "CAN5600": "clinical",
-    "DermaDia": "clinical",
     "DermaCompass": "clinical",
 }
 
@@ -304,6 +318,18 @@ origin_mapper = (
         ],  # Memorial Sloan Kettering Cancer Center, New York
         DatasetName.DERMNET_CSV: ["New Zealand"],  # DermNet NZ
         DatasetName.DERMACON_IN: ["India"],  # DermaCon-IN dataset from India
+        # MILK10k: 5 ISIC-archive centers (Vienna, Ankara, Queensland, MSKCC, Skopje)
+        DatasetName.MILK10K: [
+            "Austria",
+            "Turkey",
+            "Australia",
+            "United States",
+            "North Macedonia",
+        ],
+        # BALD: 7 academic centers across Austria, Greece, France, Italy, Japan
+        DatasetName.BALD: ["Austria", "Greece", "France", "Italy", "Japan"],
+        DatasetName.DERM12345: ["Turkey"],  # Turkish institutions (2008-2021)
+        DatasetName.MIDAS: ["United States"],  # Stanford / MRA-MIDAS
     }
     if DatasetName is not None
     else {}
@@ -313,7 +339,6 @@ origin_mapper_name = {
     "DermNet": ["New Zealand"],
     "CAN2000": None,  # Web-sourced from ~80 countries
     "CAN5600": None,  # Web-sourced from ~80 countries
-    "DermaDia": None,  # Unknown/no documentation
     "PubmedNoisy": None,  # Scientific literature, global
     "Altmeyers": ["Germany"],
 }
@@ -340,7 +365,6 @@ DEFAULT_L_DATASETS = (
         (DatasetName.SCIN, Path("/data/"), "SCIN"),
         (DatasetName.GENERIC, Path("/data/CAN2000"), "CAN2000"),
         (DatasetName.GENERIC, Path("/data/CAN5600"), "CAN5600"),
-        (DatasetName.GENERIC, Path("/data/dermadia"), "DermaDia"),
         (DatasetName.GENERIC, Path("/data/DermNet"), "DermNet"),
         (DatasetName.DERMNET_CSV, Path("/data/"), "DermNet"),
         (DatasetName.PUBMED_NOISY, Path("/data/pubmed_noisy"), "PubMed"),
@@ -351,6 +375,10 @@ DEFAULT_L_DATASETS = (
         (DatasetName.DAFFODIL, Path("/data/Daffodil"), "Daffodil"),
         (DatasetName.HIBA, Path("/data/"), "HIBA"),
         (DatasetName.MSKCC, Path("/data/"), "MSKCC"),
+        (DatasetName.MILK10K, Path("/data/"), "MILK10k"),
+        (DatasetName.BALD, Path("/data/"), "BALD"),
+        (DatasetName.DERM12345, Path("/data/"), "DERM12345"),
+        (DatasetName.MIDAS, Path("/data/"), "MIDAS"),
         (DatasetName.MM_SKINQA, Path("/data/MM-SkinQA"), "MM-SkinQA"),
     ]
     if DatasetName is not None
@@ -430,7 +458,18 @@ CATS: Dict[str, List[str]] = {
         "hair",
         "hairbearingarea",
         "perioral",
-        "perioral",
+        # merged from mucosa (oral/mucosal sites are head anatomy)
+        "oral",
+        "buccal",
+        "tongue",
+        "gingiva",
+        "palate",
+        "conjunctiva",
+        "nasal",
+        "mucosa",
+        "lip mucosa",
+        "mucosalmembranes",
+        "lips",
     ],
     "trunk_front": [
         "torso front",
@@ -444,6 +483,15 @@ CATS: Dict[str, List[str]] = {
         "abdomen",
         "abdominal",
         "suprapubic",
+        # merged from shoulder_axilla (axilla is a trunk fold)
+        "axilla",
+        "armpit",
+        "axillae",
+        # merged from trunk_unspecified (default to front when unspecified)
+        "torso",
+        "trunk",
+        "lateral torso",
+        "lateral trunk",
     ],
     "trunk_back": [
         "torso back",
@@ -454,29 +502,54 @@ CATS: Dict[str, List[str]] = {
         "paraspinal",
         "lumbar",
     ],
-    "trunk_unspecified": [
-        "torso",
-        "trunk",
-        "lateral torso",
-        "lateral trunk",
-    ],
-    "shoulder_axilla": [
-        "shoulder",
-        "axilla",
-        "armpit",
-        "deltoid",
-        "axillae",
-        "shoulders",
-    ],
     "upper_limb": [
         "upper extremity",
+        "upper extremities",
         "upper limb",
+        "upper limbs",
         "upper arm",
         "brachium",
         "elbow",
         "antecubital",
         "forearm",
         "wrist",
+        "arm",
+        "arms",
+        "wrists",
+        # merged from shoulder_axilla (shoulder is proximal upper limb)
+        "shoulder",
+        "deltoid",
+        "shoulders",
+    ],
+    "lower_limb": [
+        "lower extremity",
+        "lower extremities",
+        "lower limb",
+        "lower limbs",
+        "leg",
+        "thigh",
+        "knee",
+        "popliteal",
+        "calf",
+        "shin",
+        "lower leg",
+        "ankle",
+        "legs",
+        "lower legs",
+        "ankles",
+        "knees",
+        "thighs",
+    ],
+    "acral": [
+        # explicit acral markers (ISIC uses "acral NOS" / "acral palms or soles")
+        "acral",
+        # nail structures
+        "nail",
+        "periungual",
+        "subungual",
+        "matrix",
+        "nail bed",
+        # hands / fingers (from upper_limb)
         "hand",
         "palm",
         "dorsum hand",
@@ -486,26 +559,12 @@ CATS: Dict[str, List[str]] = {
         "middle",
         "ring",
         "little",
-        "arm",
-        "arms",
         "hands",
         "fingers",
-        "wrists",
         "palms",
         "palmar",
         "palmarplantar",
-    ],
-    "lower_limb": [
-        "lower extremity",
-        "lower limb",
-        "leg",
-        "thigh",
-        "knee",
-        "popliteal",
-        "calf",
-        "shin",
-        "lower leg",
-        "ankle",
+        # feet / toes (from lower_limb)
         "heel",
         "foot",
         "feet",
@@ -514,14 +573,8 @@ CATS: Dict[str, List[str]] = {
         "plantar",
         "toe",
         "hallux",
-        "legs",
-        "lower legs",
-        "ankles",
-        "knees",
-        "thighs",
         "toes",
         "soles",
-        "feet",
     ],
     "gluteal_buttocks": [
         "gluteal",
@@ -545,40 +598,17 @@ CATS: Dict[str, List[str]] = {
         "pubic",
         "genitals",
     ],
-    "nail": [
-        "nail",
-        "periungual",
-        "subungual",
-        "matrix",
-        "nail bed",
-    ],
-    "mucosa": [
-        "oral",
-        "buccal",
-        "tongue",
-        "gingiva",
-        "palate",
-        "conjunctiva",
-        "nasal",
-        "mucosa",
-        "lip mucosa",
-        "mucosalmembranes",
-        "lips",
-    ],
 }
 
 PRIORITY: List[str] = [
-    "nail",
+    "acral",
     "groin_genital_perineum",
     "gluteal_buttocks",
-    "shoulder_axilla",
     "trunk_back",
     "trunk_front",
-    "trunk_unspecified",
     "head_neck",
     "upper_limb",
     "lower_limb",
-    "mucosa",
 ]
 
 
@@ -591,37 +621,42 @@ CAT_PATTERNS: Dict[str, re.Pattern] = {k: _make_pattern(v) for k, v in CATS.item
 
 
 def _fallback_region(s: str) -> str | None:
+    # Acral (nail / hands / feet) — checked first (most specific)
+    if re.search(r"\b(nail|fingernails|periungual|subungual|matrix|nail bed)\b", s):
+        return "acral"
+    if re.search(r"\b(hand|hands|finger(s)?|palm(s)?|palmar|palmarplantar)\b", s):
+        return "acral"
+    if re.search(r"\b(foot|feet|toe(s)?|sole(s)?|plantar|heel|hallux)\b", s):
+        return "acral"
     if re.search(r"\barm(s)?\b", s):
         return "upper_limb"
-    if re.search(r"\b(hand|hands|finger(s)?|wrist(s)?|palm(s)?|palmar)\b", s):
+    if re.search(r"\b(wrist(s)?)\b", s):
         return "upper_limb"
     if re.search(r"\bleg(s)?\b", s):
         return "lower_limb"
     if re.search(
-        r"\b(lower ?leg(s)?|thigh(s)?|knee(s)?|ankle(s)?|foot|feet|toe(s)?|sole(s)?|plantar)\b",
+        r"\b(lower ?leg(s)?|thigh(s)?|knee(s)?|ankle(s)?)\b",
         s,
     ):
         return "lower_limb"
-    if re.search(r"\b(axillae?|shoulder(s)?)\b", s):
-        return "shoulder_axilla"
+    if re.search(r"\b(shoulder(s)?|deltoid)\b", s):
+        return "upper_limb"
     if re.search(r"\b(back|lumbar|scapular|paraspinal)\b", s):
         return "trunk_back"
     if re.search(
-        r"\b(chest|abdomen|abdominal|sternum|clavicle|rib|anterior trunk|anterior torso|torso front)\b",
+        r"\b(chest|abdomen|abdominal|sternum|clavicle|rib|anterior trunk|anterior torso|torso front|axillae?|armpit)\b",
         s,
     ):
         return "trunk_front"
     if re.search(r"\b(torso|trunk|lateral torso|lateral trunk)\b", s):
-        return "trunk_unspecified"
+        return "trunk_front"
     if re.search(
-        r"\b(face|scalp|neck|cheek|lip|mouth|perioral|perioral|nose|ear|eye|eyelid|hair)\b",
+        r"\b(face|scalp|neck|cheek|lip|mouth|perioral|nose|ear|eye|eyelid|hair|oral|buccal|tongue|mucosa)\b",
         s,
     ):
         return "head_neck"
     if re.search(r"\b(genital(s)?|groin|inguin|perineum|pubic)\b", s):
         return "groin_genital_perineum"
-    if re.search(r"\b(nail|fingernails|periungual|subungual|matrix|nail bed)\b", s):
-        return "nail"
     return None
 
 
@@ -651,19 +686,11 @@ def harmonize_body_location(raw: object) -> str:
 
 
 def harmonize_dataframe(
-    df: pd.DataFrame, col: str = "body_location", collapse_trunk: bool = False
+    df: pd.DataFrame, col: str = "body_location"
 ) -> pd.DataFrame:
     out = df.copy()
-    if col not in out.columns:
-        out["laterality"] = np.nan
-        out["body_region"] = np.nan
-        return out
     out["laterality"] = out[col].apply(extract_laterality)
     out["body_region"] = out[col].apply(harmonize_body_location)
-    if collapse_trunk:
-        out["body_region"] = out["body_region"].replace(
-            {"trunk_unspecified": "trunk_front"}
-        )
     return out
 
 
@@ -753,7 +780,6 @@ def harmonize_fitzpatrick(series: pd.Series) -> pd.Series:
     }
     cleaned = cleaned.apply(lambda x: mapping.get(x, x))
     cleaned = cleaned.where(lambda x: x.notna(), np.nan)
-
     def _to_int_or_nan(x):
         if not isinstance(x, str):
             return x
@@ -981,155 +1007,128 @@ def log_value_counts_summary(
 
 
 # --------------------------
-# ICD helpers (copied from run_analysis.py to avoid heavy imports)
+# Severity features
 # --------------------------
 
+# ICD category code → severity tier mapping.
+# Each entry is (prefix, tier_label).  Checked in order; first match wins.
+_ICD_SEVERITY_RULES: List[Tuple[str, str]] = [
+    # Tier 4 – malignant neoplasms
+    ("C", "malignant"),
+    # Tier 3 – in-situ neoplasms & actinic keratosis
+    ("D00", "pre_malignant"),
+    ("D01", "pre_malignant"),
+    ("D02", "pre_malignant"),
+    ("D03", "pre_malignant"),
+    ("D04", "pre_malignant"),
+    ("D05", "pre_malignant"),
+    ("D06", "pre_malignant"),
+    ("D07", "pre_malignant"),
+    ("D08", "pre_malignant"),
+    ("D09", "pre_malignant"),
+    ("L57", "pre_malignant"),
+    # Uncertain / unspecified-behaviour neoplasms (D37-D49): genuinely neither
+    # benign nor malignant (e.g. keratoacanthoma D48.5, mastocytosis D47,
+    # freckle D49.81). Previously lumped into "inflammatory" which was wrong.
+    ("D37", "uncertain"),
+    ("D38", "uncertain"),
+    ("D39", "uncertain"),
+    ("D4", "uncertain"),
+    # Tier 2 – inflammatory / infections (incl. ICD chapters A & B: infectious
+    # diseases were previously unhandled -> silently mislabelled "healthy").
+    ("A", "inflammatory"),  # A00-A99 infectious (syphilis A53, lyme A69, cutaneous TB A18.4)
+    ("B", "inflammatory"),  # B00-B99 infectious (herpes B00/B02, warts B07, molluscum B08.1, tinea B35)
+    ("L0", "inflammatory"),  # L00-L08 infections
+    ("L1", "inflammatory"),  # L10-L14 bullous
+    ("L2", "inflammatory"),  # L20-L30 dermatitis/eczema
+    ("L3", "inflammatory"),  # L30-L39 (cont.)
+    ("L4", "inflammatory"),  # L40-L45 papulosquamous
+    ("L5", "inflammatory"),  # L50-L54 urticaria/erythema (excl. L57 handled above)
+    # Tier 1 – benign
+    ("D1", "benign"),  # D10-D36 benign neoplasms
+    ("D2", "benign"),
+    ("D3", "benign"),  # D30-D36 benign neoplasms (e.g. D22 = melanocytic nevi)
+    ("L6", "benign"),  # L60-L75 skin appendage disorders
+    ("L7", "benign"),
+    ("L8", "benign"),  # L80-L99 other skin disorders
+    ("L9", "benign"),
+    # Dermatologic vascular lesions in the circulatory chapter are benign:
+    # spider angioma / telangiectases I78.x, etc. (previously fell through to
+    # "healthy"). NB: stasis dermatitis I87.2 is really inflammatory, but is a
+    # rare edge case among these.
+    ("I", "benign"),
+]
 
-def load_icd_mapping(path: str) -> Optional[pd.DataFrame]:
-    if not path:
+
+def compute_severity_icd(icd_category: str) -> Optional[str]:
+    """Map an ICD category code (e.g. 'C43', 'L20', 'D22') to a severity tier.
+
+    Returns one of: 'healthy', 'benign', 'inflammatory', 'pre_malignant',
+    'malignant', or ``None`` when the code is empty / unmapped.
+    """
+    code = str(icd_category).strip()
+    if not code or code.lower() in ("", "unmapped", "nan", "none"):
         return None
-    if not os.path.exists(path):
-        logging.warning("ICD mapping file not found: %s", path)
-        return None
-    mapping = pd.read_csv(path).fillna("")
-    if "condition_raw" not in mapping.columns:
-        logging.warning("ICD mapping missing 'condition_raw' column: %s", path)
-        return None
-    keep_cols = [
-        "condition_raw",
-        "icd_code",
-        "icd_description",
-        "chapter",
-        "chapter_title",
-        "chapter_range",
-        "section_id",
-        "section_desc",
+    for prefix, label in _ICD_SEVERITY_RULES:
+        if code.startswith(prefix):
+            return label
+    # Codes that don't match any pathological prefix → healthy
+    return "healthy"
+
+
+def compute_severity_symptom(meta_data: pd.DataFrame) -> pd.Series:
+    """Compute a symptom-burden severity score from PAD-UFES-20 clinical attributes.
+
+    Expected columns in *meta_data*: ``diameter_1``, ``diameter_2``,
+    ``bleed``, ``hurt``, ``itch``, ``grew``, ``changed``, ``elevation``.
+
+    Returns a :class:`pd.Series` with ordinal labels:
+    ``'none'``, ``'low'``, ``'moderate'``, ``'high'``.
+    """
+    required = [
+        "diameter_1",
+        "diameter_2",
+        "bleed",
+        "hurt",
+        "itch",
+        "grew",
+        "changed",
+        "elevation",
     ]
-    missing = [c for c in keep_cols if c not in mapping.columns]
+    missing = [c for c in required if c not in meta_data.columns]
     if missing:
-        logging.warning("ICD mapping missing columns: %s", ", ".join(missing))
-        return None
-    mapping = mapping[keep_cols].drop_duplicates("condition_raw")
-    mapping = mapping.rename(
-        columns={
-            "chapter": "icd_chapter",
-            "chapter_title": "icd_chapter_title",
-            "chapter_range": "icd_chapter_range",
-            "section_id": "icd_block",
-            "section_desc": "icd_block_desc",
-        }
-    )
-    mapping["icd_code"] = mapping["icd_code"].astype(str)
-    mapping["icd_category"] = mapping["icd_code"].str.split(".").str[0]
-    mapping["icd_category"] = mapping["icd_category"].where(
-        mapping["icd_category"].str.strip().astype(bool), ""
-    )
-    category_desc = (
-        mapping.loc[mapping["icd_category"].str.strip().astype(bool)]
-        .groupby("icd_category")["icd_description"]
-        .first()
-    )
-    mapping["icd_category_desc"] = mapping["icd_category"].map(category_desc).fillna("")
-    mapping["icd_category_label"] = (
-        mapping["icd_category"].astype(str).str.strip()
-        + " - "
-        + mapping["icd_category_desc"].astype(str).str.strip()
-    ).str.strip(" -")
-    return mapping
-
-
-def annotate_icd(
-    meta: pd.DataFrame, mapping: pd.DataFrame, condition_col: str
-) -> pd.DataFrame:
-    icd_cols = [
-        "icd_code",
-        "icd_description",
-        "icd_chapter",
-        "icd_chapter_title",
-        "icd_chapter_range",
-        "icd_block",
-        "icd_block_desc",
-        "icd_category",
-        "icd_category_desc",
-        "icd_category_label",
-    ]
-    # Drop existing ICD columns to avoid conflicts with the merge
-    existing_icd_cols = [
-        col
-        for col in meta.columns
-        if col in icd_cols
-        or col.endswith("_icdmap")
-        or col in ["icd_chapter_label", "icd_block_label"]
-    ]
-    if existing_icd_cols:
-        meta = meta.drop(columns=existing_icd_cols)
-
-    merged = meta.merge(
-        mapping,
-        how="left",
-        left_on=condition_col,
-        right_on="condition_raw",
-        suffixes=("", "_icdmap"),
-    )
-    if "condition_raw" in merged.columns:
-        merged = merged.drop(columns=["condition_raw"])
-    for col in icd_cols:
-        if col not in merged.columns:
-            merged[col] = ""
-        merged[col] = merged[col].fillna("").astype(str)
-    # Backfill block fields if the raw columns are present (e.g., section_id/section_desc from mapping CSV)
-    if "icd_block" in merged.columns and "section_id" in merged.columns:
-        needs_block = merged["icd_block"].eq("") & merged["section_id"].astype(
-            str
-        ).str.strip().ne("")
-        merged.loc[needs_block, "icd_block"] = merged.loc[needs_block, "section_id"]
-    if "icd_block_desc" in merged.columns and "section_desc" in merged.columns:
-        needs_block_desc = merged["icd_block_desc"].eq("") & merged[
-            "section_desc"
-        ].astype(str).str.strip().ne("")
-        merged.loc[needs_block_desc, "icd_block_desc"] = merged.loc[
-            needs_block_desc, "section_desc"
-        ]
-    # If the mapping lacks icd_category, derive it from icd_code as in load_icd_mapping
-    if "icd_category" in merged.columns:
-        derived_category = merged["icd_category"]
-        needs_category = derived_category.eq("") & merged["icd_code"].astype(
-            str
-        ).str.strip().ne("")
-        if needs_category.any():
-            merged.loc[needs_category, "icd_category"] = (
-                merged.loc[needs_category, "icd_code"].astype(str).str.split(".").str[0]
-            )
-        cat_desc = (
-            merged.loc[merged["icd_category"].str.strip().astype(bool)]
-            .groupby("icd_category")["icd_description"]
-            .first()
+        logger.warning(
+            "Cannot compute severity_symptom – missing columns: %s", ", ".join(missing)
         )
-        merged["icd_category_desc"] = merged["icd_category_desc"].replace("", np.nan)
-        merged["icd_category_desc"] = merged["icd_category_desc"].fillna(
-            merged["icd_category"].map(cat_desc)
+        return pd.Series(None, index=meta_data.index, dtype=object)
+
+    d1 = pd.to_numeric(meta_data["diameter_1"], errors="coerce")
+    d2 = pd.to_numeric(meta_data["diameter_2"], errors="coerce")
+    mean_diam = (d1 + d2) / 2.0
+    # z-score normalise diameters within the PAD dataset
+    diam_mean = mean_diam.mean()
+    diam_std = mean_diam.std()
+    if diam_std == 0 or pd.isna(diam_std):
+        z_diam = pd.Series(0.0, index=meta_data.index)
+    else:
+        z_diam = (mean_diam - diam_mean) / diam_std
+
+    binary_cols = ["bleed", "hurt", "itch", "grew", "changed", "elevation"]
+    binary_sum = pd.Series(0.0, index=meta_data.index)
+    for col in binary_cols:
+        binary_sum += (
+            pd.to_numeric(meta_data[col], errors="coerce").fillna(0).clip(0, 1)
         )
-    merged["icd_chapter"] = merged["icd_chapter"].replace("", "Unmapped")
-    merged["icd_chapter_title"] = merged["icd_chapter_title"].replace("", "Unmapped")
-    merged["icd_block"] = merged["icd_block"].replace("", "Unmapped")
-    merged["icd_block_desc"] = merged["icd_block_desc"].replace("", "Unmapped")
-    merged["icd_category"] = merged["icd_category"].replace("", "Unmapped")
-    merged["icd_category_desc"] = merged["icd_category_desc"].replace("", "Unmapped")
-    merged["icd_category_label"] = merged["icd_category_label"].replace("", "Unmapped")
-    merged["icd_chapter_label"] = (
-        merged["icd_chapter"].astype(str).str.strip()
-        + " - "
-        + merged["icd_chapter_title"]
-    ).str.strip(" -")
-    merged["icd_block_label"] = (
-        merged["icd_block"].astype(str).str.strip() + " - " + merged["icd_block_desc"]
-    ).str.strip(" -")
-    merged["icd_category_label"] = (
-        merged["icd_category"].astype(str).str.strip()
-        + " - "
-        + merged["icd_category_desc"].astype(str).str.strip()
-    ).str.strip(" -")
-    return merged
+
+    raw_score = z_diam + binary_sum
+
+    labels = ["none", "low", "moderate", "high"]
+    try:
+        binned = pd.qcut(raw_score, q=4, labels=labels, duplicates="drop")
+    except ValueError:
+        # Fallback if too few unique values for 4 bins
+        binned = pd.cut(raw_score, bins=4, labels=labels, duplicates="drop")
+    return binned.astype(str).replace("nan", None)
 
 
 # --------------------------
@@ -1164,7 +1163,7 @@ def build_dataframe_from_datasets(
 ) -> pd.DataFrame:
     if get_dataset is None or DatasetName is None:
         raise ImportError(
-            "Dataset loader is unavailable; ensure src.core.src.datasets.helper is importable."
+            "Dataset loader is unavailable; ensure core.src.datasets.helper is importable."
         )
 
     # Create ISIC attribution lookup for datasets that need it (e.g., HAM10000)
@@ -1173,9 +1172,31 @@ def build_dataframe_from_datasets(
     l_dataset = []
     for dataset_name, dataset_path, dataset_desc in l_datasets:
         logger.info("Loading dataset %s from %s", dataset_name, dataset_path)
-        dataset = get_dataset(
-            dataset_name=dataset_name, dataset_path=dataset_path, return_loader=False
-        )
+        try:
+            dataset = get_dataset(
+                dataset_name=dataset_name, dataset_path=dataset_path, return_loader=False
+            )
+        except (FileNotFoundError, ValueError) as e:
+            # Skip-if-absent: a dataset not staged on this machine (e.g. MIDAS,
+            # gated behind the Redivis DUA) must not abort the whole atlas rebuild.
+            # The loaders signal a missing dataset two ways: FileNotFoundError (a
+            # missing metadata CSV) or ValueError("Image path must exist", raised by
+            # GenericImageDataset when the image directory is absent). Skip those
+            # and continue; the dataset is picked up automatically once its data is
+            # staged. A ValueError that is NOT a missing-path signal is a real
+            # loader bug -> re-raise it.
+            msg = str(e).lower()
+            missing = isinstance(e, FileNotFoundError) or any(
+                k in msg for k in ("must exist", "no such file", "does not exist", "not found")
+            )
+            if not missing:
+                raise
+            logger.warning(
+                "Dataset %s not staged at %s (%s) -- SKIPPING. "
+                "Stage it to include it in the rebuild.",
+                dataset_name, dataset_path, e,
+            )
+            continue
         if dataset_name == DatasetName.PAD_UFES_20:
             image_paths = dataset.meta_data[dataset.IMG_COL].apply(
                 lambda x: os.path.join(dataset.root_dir, x)
@@ -1204,6 +1225,11 @@ def build_dataframe_from_datasets(
         if dataset_desc in release_mapper_name.keys():
             year = release_mapper_name[dataset_desc]
 
+        # Modality resolution order:
+        #   1. per-image `modality` column on the dataset (multimodal datasets
+        #      such as MILK10k / MIDAS / MM-SkinQA set this from image_type);
+        #   2. dataset-level modality_mapper / modality_mapper_name fallback;
+        #   3. ISIC datasets default to dermoscopy.
         modality = None
         if dataset_name in modality_mapper.keys():
             modality = modality_mapper[dataset_name]
@@ -1211,6 +1237,17 @@ def build_dataframe_from_datasets(
             modality = modality_mapper_name[dataset_desc]
         if modality is None and "ISIC" in dataset_desc:
             modality = "dermoscopy"
+
+        if "modality" in dataset.meta_data.columns:
+            # Honor a per-image modality column, filling gaps with the
+            # dataset-level fallback resolved above.
+            modality_values = (
+                dataset.meta_data["modality"]
+                .where(dataset.meta_data["modality"].notna(), modality)
+                .tolist()
+            )
+        else:
+            modality_values = len(dataset) * [modality]
 
         origin = None
         if dataset_name in origin_mapper.keys():
@@ -1285,6 +1322,14 @@ def build_dataframe_from_datasets(
                 )
                 logger.debug(f"Renamed 'diagnosis' to 'condition' for {dataset_desc}")
 
+        # Compute severity_symptom for PAD-UFES-20, None for all others
+        if dataset_name == DatasetName.PAD_UFES_20:
+            severity_symptom_values = compute_severity_symptom(
+                dataset.meta_data
+            ).tolist()
+        else:
+            severity_symptom_values = len(dataset) * [None]
+
         columns = dataset.meta_data.columns
         l_dataset.append(
             list(
@@ -1301,7 +1346,7 @@ def build_dataframe_from_datasets(
                         if "dataset_year" in columns
                         else len(dataset) * [year]
                     ),
-                    len(dataset) * [modality],
+                    modality_values,
                     (
                         dataset.meta_data["condition"]
                         if "condition" in columns
@@ -1333,6 +1378,7 @@ def build_dataframe_from_datasets(
                         else dataset.meta_data["description"]
                     ),
                     origin_list,
+                    severity_symptom_values,
                 )
             )
         )
@@ -1352,6 +1398,7 @@ def build_dataframe_from_datasets(
             "fitzpatrick",
             "description_short",
             "origin",
+            "severity_symptom",
         ],
     )
     df["description"] = df.apply(
@@ -1415,6 +1462,19 @@ def run_prep(
             l_datasets = DEFAULT_L_DATASETS
         else:
             l_datasets = _load_dataset_config(dataset_config)
+        # Honour $DATA_ROOT (default /data) so the pipeline runs on any machine,
+        # not only one with data mounted at /data. rebuild_atlas.sh and the
+        # downloader already use DATA_ROOT; previously prep_data ignored it and
+        # silently read /data regardless. Only re-roots the /data-prefixed paths.
+        data_root = os.environ.get("DATA_ROOT", "/data").rstrip("/") or "/data"
+        if data_root != "/data":
+            def _reroot(p: Path) -> Path:
+                s = str(p)
+                if s == "/data" or s.startswith("/data/"):
+                    return Path(data_root + s[len("/data"):])
+                return p
+            l_datasets = [(n, _reroot(p), d) for (n, p, d) in l_datasets]
+            logger.info("Re-rooted dataset paths under DATA_ROOT=%s", data_root)
         df = build_dataframe_from_datasets(l_datasets)
 
     df["dataset_desc"] = df["dataset_desc"].apply(
@@ -1440,6 +1500,9 @@ def run_prep(
         icd_mapping_df = load_icd_mapping(str(icd_mapping_path))
         if icd_mapping_df is not None:
             df = annotate_icd(df, icd_mapping_df, condition_col)
+            # Derive severity from ICD category codes
+            if "icd_category" in df.columns:
+                df["severity_icd"] = df["icd_category"].apply(compute_severity_icd)
         else:
             logger.warning("ICD mapping not loaded; skipping ICD annotation.")
 
@@ -1553,7 +1616,7 @@ def parse_args() -> argparse.Namespace:
         "--icd-mapping",
         type=Path,
         default=Path("results/condition_icd_mapping.csv"),
-        help="ICD mapping CSV (from scripts/build_icd_mapping.py).",
+        help="Condition to ICD mapping CSV. ICD columns are skipped if the file is missing.",
     )
     parser.add_argument(
         "--condition-col",

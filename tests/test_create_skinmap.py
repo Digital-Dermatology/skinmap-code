@@ -3,12 +3,12 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from src.create_skinmap import (
+from skinmap.pipeline.create_skinmap import (
     generate_run_name,
     load_cached_separability_results,
     reuse_cached_metadata_predictions,
 )
-from src.skinmap.cache.manager import get_single_model_cache_path
+from skinmap.cache.manager import get_single_model_cache_path
 
 
 def test_reuse_cached_metadata_predictions_success(tmp_path):
@@ -157,6 +157,7 @@ class TestRunNameCacheConsistency:
 
     def test_combined_models_with_assets_prefix(self, tmp_path):
         """Test combined run names also strip 'assets/' consistently."""
+        str(tmp_path)
         mock_args = MagicMock()
         mock_args.ssl_model = None
         mock_args.model_path = None
@@ -174,6 +175,7 @@ class TestRunNameCacheConsistency:
 
     def test_combined_models_mixed_paths(self, tmp_path):
         """Test combined models with mixed path formats."""
+        str(tmp_path)
         mock_args = MagicMock()
         mock_args.ssl_model = None
         mock_args.model_path = None

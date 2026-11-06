@@ -11,6 +11,10 @@ CONDITION_COL = "condition"
 AGE_COL = "age"
 ORIGIN_COL = "origin"
 
+# Severity columns
+SEVERITY_ICD_COL = "severity_icd"
+SEVERITY_SYMPTOM_COL = "severity_symptom"
+
 # Multilabel columns that need special handling
 # Note: origin is now single-label, not multi-label
 MULTILABEL_COLUMNS = set()  # Empty set - no multi-label columns currently

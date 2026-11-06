@@ -5,7 +5,7 @@ import os
 import pytest
 import torch
 
-from src.skinmap.models.loaders import load_multiple_models
+from skinmap.models.loaders import load_multiple_models
 
 
 @pytest.mark.integration

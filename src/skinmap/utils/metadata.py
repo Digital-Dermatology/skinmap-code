@@ -34,7 +34,7 @@ from .bootstrap import (
 
 
 def _create_predictor_model(
-    is_multilabel: bool, is_regression: bool, random_state: int
+    is_multilabel: bool, is_regression: bool, random_state: int, class_weight=None
 ):
     """Create predictor model with consistent configuration.
 
@@ -44,6 +44,9 @@ def _create_predictor_model(
         is_multilabel: Whether task is multi-label classification
         is_regression: Whether task is regression
         random_state: Random seed for reproducibility
+        class_weight: passed to LogisticRegression (e.g. "balanced" to counter
+            class imbalance; ignored for regression). Used by the per-modality
+            FST predictor where the dermatoscopic domain is heavily light-skewed.
 
     Returns:
         Configured model instance
@@ -52,6 +55,7 @@ def _create_predictor_model(
         base_classifier = LogisticRegression(
             max_iter=5_000,
             random_state=random_state,
+            class_weight=class_weight,
         )
         return MultiOutputClassifier(base_classifier)
     elif is_regression:
@@ -60,6 +64,7 @@ def _create_predictor_model(
         return LogisticRegression(
             max_iter=5_000,
             random_state=random_state,
+            class_weight=class_weight,
         )
 
 
@@ -72,6 +77,7 @@ def predict_missing_metadata(
     output_dir: Optional[str] = None,
     balancing_strategy: Literal["none", "undersample", "oversample"] = "none",
     bootstrap_n_iterations: int = 0,
+    class_weight=None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Predict missing metadata attributes using linear models on embeddings.
 
@@ -196,7 +202,9 @@ def predict_missing_metadata(
 
         # Train evaluation model with standard configuration
         logger.info("Training evaluation model...")
-        model_eval = _create_predictor_model(is_multilabel, is_regression, random_state)
+        model_eval = _create_predictor_model(
+            is_multilabel, is_regression, random_state, class_weight=class_weight
+        )
         model_eval.fit(X_train, y_train)
 
         # Evaluate
@@ -419,7 +427,7 @@ def predict_missing_metadata(
         # Train final model on all known data (same configuration as evaluation)
         logger.info("Training final model on all known data...")
         model_final = _create_predictor_model(
-            is_multilabel, is_regression, random_state
+            is_multilabel, is_regression, random_state, class_weight=class_weight
         )
         model_final.fit(X_known, y_known_encoded)
 
@@ -475,6 +483,63 @@ def predict_missing_metadata(
 
     metrics_df = pd.DataFrame(all_metrics) if all_metrics else pd.DataFrame()
     return df_output, metrics_df, all_confusion_matrices
+
+
+def predict_missing_metadata_by_group(
+    embeddings: np.ndarray,
+    df: pd.DataFrame,
+    attributes: List[str],
+    groups,
+    test_size: float = 0.2,
+    random_state: int = 42,
+    class_weight="balanced",
+) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Predict ``{attr}_pred`` PER GROUP (e.g. modality group) instead of one
+    global model.
+
+    Runs :func:`predict_missing_metadata` independently on each group's rows, so
+    an attribute is learned within its own imaging domain rather than by a single
+    model dominated by the largest domain. Used for FST: a global model is swamped
+    by clinical labels and degrades on dermoscopy/TBP; grouped by
+    {clinical} vs {dermoscopy+TBP} it is modality-appropriate. ``class_weight``
+    defaults to ``"balanced"`` because per-domain label sets are skewed (the
+    dermatoscopic domain is ~mostly light FST), which otherwise collapses the
+    prediction to the majority class.
+
+    Args:
+        groups: array/Series aligned to ``df`` rows giving each row's group label.
+    Returns:
+        (df with ``{attr}_pred`` filled per group, metrics df with a ``group``
+        column, {}). Per-group models are not persisted (the *_pred column is the
+        artifact; only the ``{attr}`` real values / global models are saved).
+    """
+    groups = np.asarray(groups)
+    df_out = df.copy()
+    for a in attributes:
+        if a + "_pred" not in df_out.columns:
+            df_out[a + "_pred"] = np.nan
+    all_metrics = []
+    for g in pd.unique(groups):
+        gmask = groups == g
+        if int(gmask.sum()) < 2:
+            continue
+        sub = df.loc[gmask].reset_index(drop=True)
+        sub_out, metrics, _ = predict_missing_metadata(
+            embeddings[gmask], sub, attributes,
+            test_size=test_size, random_state=random_state,
+            output_dir=None, class_weight=class_weight,
+        )
+        for a in attributes:
+            col = a + "_pred"
+            if col in sub_out.columns:
+                df_out.loc[gmask, col] = sub_out[col].values
+        if not metrics.empty:
+            metrics = metrics.copy()
+            metrics["group"] = g
+            all_metrics.append(metrics)
+        logger.info(f"[per-group] group={g!r} n={int(gmask.sum())} attrs={attributes}")
+    metrics_df = pd.concat(all_metrics, ignore_index=True) if all_metrics else pd.DataFrame()
+    return df_out, metrics_df, {}
 
 
 def predict_random_baseline_metadata(
@@ -851,3 +916,159 @@ def evaluate_metadata_with_balancing_comparison(
             index=False,
         )
     return results_df
+
+
+def evaluate_imputation_by_subgroup(
+    embeddings: np.ndarray,
+    df: pd.DataFrame,
+    target_attribute: str,
+    stratify_by: str,
+    test_size: float = 0.2,
+    bootstrap_n_iterations: int = 500,
+    random_state: int = 42,
+    min_subgroup_size: int = 30,
+) -> pd.DataFrame:
+    """Evaluate imputation accuracy stratified by a demographic subgroup.
+
+    Trains a linear probe on a train split and evaluates per-subgroup on the
+    test split, enabling analysis of whether imputation quality degrades
+    for under-represented populations.
+
+    Args:
+        embeddings: Image embeddings array (N, D), aligned with df rows.
+        df: DataFrame containing ground-truth columns.
+        target_attribute: The attribute being evaluated (e.g., "fitzpatrick").
+        stratify_by: Column to stratify by (e.g., "fitzpatrick_pred", "age_bin").
+        test_size: Proportion of data for testing (default: 0.2).
+        bootstrap_n_iterations: Number of bootstrap iterations for CIs.
+        random_state: Seed for reproducibility.
+        min_subgroup_size: Minimum samples in a subgroup to include it.
+
+    Returns:
+        DataFrame with columns: subgroup, n_samples, metric, value, ci_lower, ci_upper
+    """
+    # Only use samples with ground truth for the target
+    mask = df[target_attribute].notna()
+    if stratify_by not in df.columns:
+        return pd.DataFrame()
+    mask = mask & df[stratify_by].notna()
+    df_eval = df.loc[mask].copy()
+    X_eval = embeddings[mask.values]
+
+    is_regression = target_attribute == "age"
+    y = df_eval[target_attribute].values
+
+    # Encode labels
+    le = None
+    if is_regression:
+        y_encoded = y.astype(float)
+    else:
+        le = LabelEncoder()
+        y_encoded = le.fit_transform(y)
+
+    # Train/test split
+    X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(
+        X_eval, y_encoded, np.arange(len(df_eval)),
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y_encoded if not is_regression else None,
+    )
+
+    # Train model
+    model = _create_predictor_model(False, is_regression, random_state)
+    model.fit(X_train, y_train)
+
+    # Predict on test set
+    y_pred = model.predict(X_test)
+    if is_regression:
+        y_min, y_max = y_encoded.min(), y_encoded.max()
+        buffer = 0.05 * (y_max - y_min)
+        y_pred = np.clip(y_pred, max(0, y_min - buffer), y_max + buffer)
+
+    # Get stratification labels for the test set
+    strat_values = df_eval.iloc[idx_test][stratify_by].values
+
+    rows = []
+    for subgroup in sorted(set(strat_values)):
+        grp_mask = strat_values == subgroup
+        if grp_mask.sum() < min_subgroup_size:
+            continue
+
+        y_true_grp = y_test[grp_mask]
+        y_pred_grp = y_pred[grp_mask]
+        if grp_mask.sum() < min_subgroup_size:
+            continue
+
+        n_grp = int(grp_mask.sum())
+
+        if is_regression:
+            if bootstrap_n_iterations > 0:
+                boot_metrics = compute_regression_metrics_with_bootstrap(
+                    y_true_grp, y_pred_grp,
+                    n_iterations=bootstrap_n_iterations,
+                    random_state=random_state,
+                )
+                for metric_name, (mean_val, lo, hi) in boot_metrics.items():
+                    rows.append({
+                        "target": target_attribute,
+                        "stratify_by": stratify_by,
+                        "subgroup": str(subgroup),
+                        "n_samples": n_grp,
+                        "metric": metric_name,
+                        "value": mean_val,
+                        "ci_lower": lo,
+                        "ci_upper": hi,
+                    })
+            else:
+                for name, fn in [
+                    ("mae", lambda yt, yp: mean_absolute_error(yt, yp)),
+                    ("rmse", lambda yt, yp: np.sqrt(mean_squared_error(yt, yp))),
+                    ("r2", lambda yt, yp: r2_score(yt, yp)),
+                ]:
+                    rows.append({
+                        "target": target_attribute,
+                        "stratify_by": stratify_by,
+                        "subgroup": str(subgroup),
+                        "n_samples": n_grp,
+                        "metric": name,
+                        "value": fn(y_true_grp, y_pred_grp),
+                        "ci_lower": np.nan,
+                        "ci_upper": np.nan,
+                    })
+        else:
+            if bootstrap_n_iterations > 0:
+                boot_metrics = compute_classification_metrics_with_bootstrap(
+                    y_true_grp, y_pred_grp,
+                    n_iterations=bootstrap_n_iterations,
+                    random_state=random_state,
+                    is_multilabel=False,
+                )
+                for metric_name, (mean_val, lo, hi) in boot_metrics.items():
+                    rows.append({
+                        "target": target_attribute,
+                        "stratify_by": stratify_by,
+                        "subgroup": str(subgroup),
+                        "n_samples": n_grp,
+                        "metric": metric_name,
+                        "value": mean_val,
+                        "ci_lower": lo,
+                        "ci_upper": hi,
+                    })
+            else:
+                for name, fn in [
+                    ("accuracy", lambda yt, yp: accuracy_score(yt, yp)),
+                    ("balanced_accuracy", lambda yt, yp: balanced_accuracy_score(yt, yp)),
+                    ("f1_macro", lambda yt, yp: f1_score(yt, yp, average="macro", zero_division=0)),
+                ]:
+                    rows.append({
+                        "target": target_attribute,
+                        "stratify_by": stratify_by,
+                        "subgroup": str(subgroup),
+                        "n_samples": n_grp,
+                        "metric": name,
+                        "value": fn(y_true_grp, y_pred_grp),
+                        "ci_lower": np.nan,
+                        "ci_upper": np.nan,
+                    })
+
+    return pd.DataFrame(rows)

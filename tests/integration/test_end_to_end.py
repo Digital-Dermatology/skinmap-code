@@ -7,15 +7,15 @@ Tests the full pipeline from data loading to embedding extraction to caching.
 import numpy as np
 import pandas as pd
 
-from src.skinmap.cache.manager import CacheConfig, EmbeddingCache
-from src.skinmap.data.preprocessing import normalize_multilabel_columns
-from src.skinmap.embeddings.extractors import (
+from skinmap.cache.manager import CacheConfig, EmbeddingCache
+from skinmap.data.preprocessing import normalize_multilabel_columns
+from skinmap.embeddings.extractors import (
     extract_clip_embeddings,
     extract_ssl_embeddings,
 )
-from src.skinmap.embeddings.fusion import combine_embeddings_simple
-from src.skinmap.embeddings.projector import extract_combined_embeddings_with_projector
-from src.skinmap.models.loaders import ModelInfo
+from skinmap.embeddings.fusion import combine_embeddings_simple
+from skinmap.embeddings.projector import extract_combined_embeddings_with_projector
+from skinmap.models.loaders import ModelInfo
 
 
 class TestSingleModelPipeline:

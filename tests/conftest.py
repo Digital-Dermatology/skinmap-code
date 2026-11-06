@@ -188,14 +188,14 @@ def patch_model_loading(monkeypatch, mock_clip_model, mock_processor, mock_ssl_m
     def _mock_loader(model_name, device, model_path=None):
         return mock_clip_model, mock_processor
 
-    import src.train_clip
+    import skinmap.pipeline.train_clip
 
-    monkeypatch.setattr(src.train_clip, "load_model_and_processor", _mock_loader)
+    monkeypatch.setattr(skinmap.pipeline.train_clip, "load_model_and_processor", _mock_loader)
 
     def _mock_load_pretrained(*args, **kwargs):
         return mock_ssl_model, SimpleNamespace(), {}
 
-    import src.core.src.pkg.embedder as embedder_module
+    import core.src.pkg.embedder as embedder_module
 
     monkeypatch.setattr(
         embedder_module.Embedder, "load_pretrained", _mock_load_pretrained

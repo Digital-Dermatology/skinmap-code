@@ -18,9 +18,9 @@ import torch
 from PIL import Image
 from sklearn.preprocessing import LabelEncoder
 
-from src.create_skinmap import _save_confusion_matrices
-from src.embedding_fusion import BuildSpec, build_model
-from src.skinmap.evaluation.downstream import (
+from skinmap.pipeline.create_skinmap import _save_confusion_matrices
+from skinmap.pipeline.embedding_fusion import BuildSpec, build_model
+from skinmap.evaluation.downstream import (
     _evaluate_classification_task,
     evaluate_image_dataset,
 )
@@ -77,7 +77,7 @@ class TestDownstreamEvaluation:
         emb_path = str(tmp_path / "embeddings.npz")
 
         with patch(
-            "src.skinmap.evaluation.downstream.get_imagenet_transform"
+            "skinmap.evaluation.downstream.get_imagenet_transform"
         ) as mock_transform:
             # Mock the transform to return tensors
             mock_transform.return_value = lambda x: torch.randn(3, 224, 224)
@@ -150,7 +150,7 @@ class TestDownstreamEvaluation:
         ]
 
         with patch(
-            "src.skinmap.evaluation.downstream.get_imagenet_transform"
+            "skinmap.evaluation.downstream.get_imagenet_transform"
         ) as mock_transform:
             mock_transform.return_value = lambda x: torch.randn(3, 224, 224)
 
@@ -364,7 +364,7 @@ def test_projector_used_for_learned_metric_space(monkeypatch, tmp_path):
             return np.zeros(X.shape[0], dtype=int)
 
     monkeypatch.setattr(
-        "src.skinmap.evaluation.downstream.KNeighborsClassifier", DummyKNN
+        "skinmap.evaluation.downstream.KNeighborsClassifier", DummyKNN
     )
 
     learned_metric_L = np.ones((1, out_dim), dtype=np.float32)

@@ -25,33 +25,34 @@ import wandb
 from loguru import logger
 
 # Import functions from other modules
-from src.core.src.datasets.helper import DatasetName, get_dataset
-from src.core.src.pkg.embedder import Embedder
-from src.embedding_fusion import BuildSpec, build_model
+from core.src.datasets.helper import DatasetName, get_dataset
+from core.src.pkg.embedder import Embedder
+from skinmap.pipeline.embedding_fusion import BuildSpec, build_model
 
 # Import refactored skinmap modules
-from src.skinmap.cache.manager import CacheConfig, EmbeddingCache
-from src.skinmap.data.preprocessing import normalize_multilabel_columns
-from src.skinmap.data.transforms import get_imagenet_transform
-from src.skinmap.embeddings.extractors import (
+from skinmap.cache.manager import CacheConfig, EmbeddingCache
+from skinmap.data.preprocessing import normalize_multilabel_columns
+from skinmap.data.transforms import get_imagenet_transform
+from skinmap.embeddings.extractors import (
     extract_clip_embeddings,
     extract_ssl_embeddings,
 )
-from src.skinmap.embeddings.fusion import combine_embeddings_simple
-from src.skinmap.embeddings.projector import extract_combined_embeddings_with_projector
-from src.skinmap.evaluation.downstream import (
+from skinmap.embeddings.fusion import combine_embeddings_simple
+from skinmap.embeddings.projector import extract_combined_embeddings_with_projector
+from skinmap.evaluation.downstream import (
     evaluate_downstream_with_balancing_comparison,
     evaluate_image_dataset,
 )
-from src.skinmap.models.loaders import SSL_MODEL_NAMES, ModelInfo, load_multiple_models
-from src.skinmap.utils.metadata import (
+from skinmap.models.loaders import SSL_MODEL_NAMES, ModelInfo, load_multiple_models
+from skinmap.utils.metadata import (
     evaluate_metadata_with_balancing_comparison,
     predict_missing_metadata,
+    predict_missing_metadata_by_group,
     predict_random_baseline_metadata,
 )
-from src.skinmap.utils.metrics import compute_learned_metric_transformation
-from src.skinmap.visualization.atlas import generate_atlas
-from src.train_clip import load_model_and_processor, set_seed, setup_logger
+from skinmap.utils.metrics import compute_learned_metric_transformation
+from skinmap.visualization.atlas import generate_atlas
+from skinmap.pipeline.train_clip import load_model_and_processor, set_seed, setup_logger
 
 # Re-export for backward compatibility with combined_embedder.py
 __all__ = ["SSL_MODEL_NAMES", "get_imagenet_transform"]
@@ -310,6 +311,9 @@ def parse_args() -> argparse.Namespace:
             "age",
             "fitzpatrick",
             "origin",
+            "severity_icd",
+            "severity_symptom",
+            "modality",
         ],
         help="List of metadata attributes to predict (space or comma separated)",
     )
@@ -375,6 +379,12 @@ def parse_args() -> argparse.Namespace:
         "--atlas_store_vectors",
         action="store_true",
         help="Store full embedding vectors in atlas (not just 2D projections)",
+    )
+    parser.add_argument(
+        "--label_column",
+        type=str,
+        default="icd_description",
+        help="Column to use for generating automatic cluster labels in the atlas (default: icd_description)",
     )
     parser.add_argument(
         "--separability_eval",
@@ -866,6 +876,7 @@ def extract_or_load_embeddings(
                         max_samples=args.vis_samples,
                         dataset_col="dataset_desc",
                         num_workers=args.num_workers,
+                        text_col="description",
                     )
                 )
 
@@ -905,6 +916,7 @@ def extract_or_load_embeddings(
                 max_samples=args.vis_samples,
                 dataset_col="dataset_desc",
                 num_workers=args.num_workers,
+                text_col="description",
                 projector_dim=args.projector_dim,
                 projector_type=args.projector_type,
                 n_epochs=args.projector_epochs,
@@ -950,6 +962,7 @@ def extract_or_load_embeddings(
                 dataset_col="dataset_desc",
                 num_workers=args.num_workers,
                 svd_components=args.svd_components,
+                text_col="description",
             )
             artifacts = {"svd_image_model": svd_image, "svd_text_model": svd_text}
 
@@ -1744,7 +1757,7 @@ def main():
         logger.info("=" * 60)
         logger.info("GENERATING STATIC VISUALIZATION")
         logger.info("=" * 60)
-        from src.train_clip import plot_embeddings
+        from skinmap.pipeline.train_clip import plot_embeddings
 
         plot_embeddings(
             args=args,
@@ -2096,21 +2109,51 @@ def main():
                     )
                 )
             else:
-                # Use XGBoost predictor
                 bootstrap_n_iter = (
                     args.bootstrap_n_iterations if args.bootstrap_uncertainty else 0
                 )
+                # FST is predicted PER MODALITY-GROUP {clinical} vs
+                # {dermoscopy+TBP} with class balancing; everything else globally.
+                # A single global FST model is dominated by clinical labels
+                # (~34k vs ~6k dermoscopy vs ~5 TBP) and degrades dermoscopy/TBP;
+                # the dermatoscopic domain is also light-skewed so balancing keeps
+                # the prediction from collapsing to the majority class.
+                fst_attrs = [
+                    a for a in metadata_attributes
+                    if a in ("fitzpatrick", "fitzpatrick_grouped")
+                ]
+                other_attrs = [a for a in metadata_attributes if a not in fst_attrs]
                 filtered_df, metrics_df, metadata_confusion_matrices = (
                     predict_missing_metadata(
                         image_embeddings,
                         filtered_df,
-                        metadata_attributes,
+                        other_attrs,
                         test_size=args.prediction_test_size,
                         random_state=args.seed,
                         output_dir=out_dir,
                         bootstrap_n_iterations=bootstrap_n_iter,
                     )
                 )
+                if fst_attrs:
+                    _mod = filtered_df["modality"]
+                    if "modality_pred" in filtered_df.columns:
+                        _mod = _mod.fillna(filtered_df["modality_pred"])
+                    _grp = np.where(
+                        _mod.astype(str).values == "clinical", "clinical", "derm"
+                    )
+                    filtered_df, _fst_metrics, _ = predict_missing_metadata_by_group(
+                        image_embeddings,
+                        filtered_df,
+                        fst_attrs,
+                        _grp,
+                        test_size=args.prediction_test_size,
+                        random_state=args.seed,
+                        class_weight="balanced",
+                    )
+                    if not _fst_metrics.empty:
+                        metrics_df = pd.concat(
+                            [metrics_df, _fst_metrics], ignore_index=True
+                        )
 
             if not metrics_df.empty:
                 metrics_df.to_csv(metrics_path, index=False)
@@ -2235,8 +2278,8 @@ def main():
         model_names,
     )
 
-    # Generate or reuse the atlas parquet (runs after the embedding artifacts are
-    # persisted).
+    # Generate or reuse atlas assets (runs after artifacts are persisted so the
+    # embedding_pipeline_config references the correct SVD/projector files).
     if args.use_atlas:
         logger.info("=" * 60)
         logger.info("EMBEDDING ATLAS")
@@ -2249,8 +2292,10 @@ def main():
             output_dir=out_dir,
             args=args,
             store_vectors=args.atlas_store_vectors,
+            launch_cli=args.use_atlas,
             force_recompute=args.use_atlas or not atlas_exists,
             reuse_existing=True,
+            label_column=args.label_column,
         )
         logger.info(f"Atlas ready with {len(atlas_df)} samples (path: {atlas_path})")
     else:

@@ -69,8 +69,8 @@ def load_multiple_models(
         RuntimeError: If a model fails to load
     """
     # Import here to avoid circular dependencies
-    from src.core.src.pkg.embedder import Embedder
-    from src.train_clip import load_model_and_processor
+    from core.src.pkg.embedder import Embedder
+    from skinmap.pipeline.train_clip import load_model_and_processor
 
     models = []
     model_list = [name.strip() for name in model_names_or_paths.split(",")]

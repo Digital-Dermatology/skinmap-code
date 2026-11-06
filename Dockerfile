@@ -37,9 +37,9 @@ RUN python -m pip install -r /assets/requirements.txt -c /assets/constraints.txt
 # Your code
 COPY . /workspace/
 RUN git config --global --add safe.directory '*'
+RUN python -m pip install -e /workspace --no-deps
 
 ENV TOKENIZERS_PARALLELISM=false
-ENV PYTHONPATH=/workspace
 
 # Smoke test at build time so the image fails early if anything drifts
 RUN python - <<'PY'

@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from ..data.transforms import get_imagenet_transform
+from ..utils.transformers_compat import coerce_clip_features
 from ..utils.worker_utils import resolve_num_workers
 
 
@@ -237,6 +238,7 @@ def extract_clip_embeddings(
     max_samples: Optional[int] = None,
     dataset_col: str = "dataset_desc",
     num_workers: int = 4,
+    text_col: Optional[str] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[int], pd.DataFrame]:
     """Extract embeddings from CLIP model, filtering out corrupted samples.
 
@@ -247,8 +249,10 @@ def extract_clip_embeddings(
         device: torch device
         batch_size: Batch size for processing
         max_samples: Maximum number of samples to process
-        dataset_col: Column name for dataset labels and text
+        dataset_col: Column name for dataset labels
         num_workers: Number of dataloader workers
+        text_col: Column name for CLIP text input. If None, falls back to
+            dataset_col for backward compatibility.
 
     Returns:
         Tuple of (image_embeddings, text_embeddings, dataset_labels, corrupted_indices, filtered_df)
@@ -258,6 +262,8 @@ def extract_clip_embeddings(
         - corrupted_indices: Original indices that were corrupted
         - filtered_df: Dataframe with corrupted rows removed
     """
+    effective_text_col = text_col if text_col is not None else dataset_col
+
     # Sample if needed
     df_work = df.copy()
     if max_samples and len(df_work) > max_samples:
@@ -266,7 +272,7 @@ def extract_clip_embeddings(
 
     logger.info(f"Extracting CLIP embeddings from {len(df_work)} samples")
 
-    dataset = ImageDataset(df_work, transform=None, text_col=dataset_col)
+    dataset = ImageDataset(df_work, transform=None, text_col=effective_text_col)
 
     def collate_fn(batch):
         # Images are PIL, not transformed yet
@@ -308,8 +314,12 @@ def extract_clip_embeddings(
                 k: v.to(device, non_blocking=True) for k, v in text_inputs.items()
             }
 
-            img_feats = actual_model.get_image_features(**image_inputs)
-            txt_feats = actual_model.get_text_features(**text_inputs)
+            img_feats = coerce_clip_features(
+                actual_model.get_image_features(**image_inputs), "image_embeds"
+            )
+            txt_feats = coerce_clip_features(
+                actual_model.get_text_features(**text_inputs), "text_embeds"
+            )
 
             image_embs.append(img_feats.cpu())
             text_embs.append(txt_feats.cpu())

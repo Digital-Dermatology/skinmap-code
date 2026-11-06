@@ -18,8 +18,8 @@ import numpy as np
 import pytest
 from sklearn.linear_model import SGDClassifier
 
-import src.skinmap.utils.metrics as metrics_mod
-from src.skinmap.utils.metrics import compute_learned_metric_transformation
+import skinmap.utils.metrics as metrics_mod
+from skinmap.utils.metrics import compute_learned_metric_transformation
 
 
 class TestBinaryClassification:
@@ -383,6 +383,13 @@ class TestTransformationQuality:
         class1 = np.random.randn(n_samples // 2, 64).astype(np.float32) * 1.0 + 0.5
         embeddings = np.vstack([class0, class1])
         labels = np.array([0] * (n_samples // 2) + [1] * (n_samples // 2))
+
+        # Compute original separation
+        class0_orig = embeddings[: n_samples // 2]
+        class1_orig = embeddings[n_samples // 2 :]
+        np.linalg.norm(
+            np.mean(class0_orig, axis=0) - np.mean(class1_orig, axis=0)
+        )
 
         # Learn metric
         L_matrix = compute_learned_metric_transformation(

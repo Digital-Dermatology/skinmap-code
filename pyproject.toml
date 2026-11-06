@@ -1,20 +1,36 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "SkinMap"
-description = "Unifying Dermatological Datasets."
+name = "skinmap"
+description = "A global atlas of digital dermatology: unify datasets, embed them, and measure coverage and gaps."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "Fabian Gröger", email = "fabian.groeger@unibas.ch" },
 ]
-dependencies = [
-    "loguru>=0.7",
-    "ripser>=0.6.8",
-]
+dynamic = ["version", "dependencies", "optional-dependencies"]
 
-[tool.black]
-include = '\.pyi?$'
+[project.urls]
+Repository = "https://github.com/Digital-Dermatology/skinmap-code"
 
-[tool.isort]
-profile = "black"
-skip_gitignore=true
-py_version=39
-default_section = "THIRDPARTY"
-known_thirdparty=["wandb"]
+[tool.setuptools.dynamic]
+version = { attr = "skinmap.__version__" }
+dependencies = { file = ["requirements.txt"] }
+optional-dependencies.dev = { file = ["requirements-dev.txt"] }
+
+# The core submodule installs next to skinmap as the top-level package `core`.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["skinmap*", "core", "core.src*"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["src/core"]
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+

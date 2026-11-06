@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.skinmap.cache.manager import CacheConfig, EmbeddingCache
+from skinmap.cache.manager import CacheConfig, EmbeddingCache
 
 
 class TestBug1_DimensionMismatch:
@@ -47,7 +47,7 @@ class TestBug1_DimensionMismatch:
         # But extract_or_load_embeddings should FAIL with clear error
         from unittest.mock import MagicMock
 
-        from src.create_skinmap import extract_or_load_embeddings
+        from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
 
         mock_args = MagicMock()
         mock_args.output_dir = str(tmp_path)
@@ -93,7 +93,7 @@ class TestBug1_DimensionMismatch:
         mock_args.use_trained_projector = False
         mock_args.svd_components = None
 
-        with patch("src.create_skinmap.extract_clip_embeddings") as mock_extract:
+        with patch("skinmap.pipeline.create_skinmap.extract_clip_embeddings") as mock_extract:
             mock_extract.return_value = (
                 embs,
                 embs.copy(),
@@ -102,8 +102,8 @@ class TestBug1_DimensionMismatch:
                 df.copy(),
             )
 
-            from src.create_skinmap import extract_or_load_embeddings
-            from src.skinmap.models.loaders import ModelInfo
+            from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
+            from skinmap.models.loaders import ModelInfo
 
             models = [ModelInfo(MagicMock(), MagicMock(), "clip", "test")]
 
@@ -169,7 +169,7 @@ class TestBug1_DimensionMismatch:
         # Verify: Loading should detect dimension mismatch
         from unittest.mock import MagicMock
 
-        from src.create_skinmap import extract_or_load_embeddings
+        from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
 
         mock_args = MagicMock()
         mock_args.output_dir = str(tmp_path)
@@ -217,7 +217,7 @@ class TestBug2_EmptyCache:
         # Verify: Should raise error about 0 samples
         from unittest.mock import MagicMock
 
-        from src.create_skinmap import extract_or_load_embeddings
+        from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
 
         mock_args = MagicMock()
         mock_args.output_dir = str(tmp_path)
@@ -255,7 +255,7 @@ class TestBug2_EmptyCache:
 
         from unittest.mock import MagicMock
 
-        from src.create_skinmap import extract_or_load_embeddings
+        from skinmap.pipeline.create_skinmap import extract_or_load_embeddings
 
         mock_args = MagicMock()
         mock_args.output_dir = str(tmp_path)
@@ -278,7 +278,7 @@ class TestResultsCompleteness:
 
     def test_downstream_results_helper(self, tmp_path):
         """Test _save_downstream_results creates correct CSV."""
-        from src.create_skinmap import _save_downstream_results
+        from skinmap.pipeline.create_skinmap import _save_downstream_results
 
         results = {
             "classification": {
@@ -369,7 +369,7 @@ class TestFusionDimensionChecks:
         # Just verify the error message format exists in code
         import inspect
 
-        from src.skinmap.embeddings.fusion import combine_embeddings_simple
+        from skinmap.embeddings.fusion import combine_embeddings_simple
 
         source = inspect.getsource(combine_embeddings_simple)
         assert (
@@ -379,10 +379,17 @@ class TestFusionDimensionChecks:
 
 def test_smoke_all_bugfixes():
     """Smoke test to verify all bugfix code paths are reachable."""
-    # Verify imports work
+    import skinmap.cache.manager as manager
+    import skinmap.embeddings.extractors as extractors
+    import skinmap.pipeline.create_skinmap as create_skinmap
 
-    # If we got here, all the fixed code is importable
-    assert True
+    assert create_skinmap._save_downstream_results
+    assert create_skinmap.extract_or_load_embeddings
+    assert create_skinmap.load_cached_separability_results
+    assert create_skinmap.reuse_cached_metadata_predictions
+    assert manager.CacheConfig
+    assert manager.EmbeddingCache
+    assert extractors._filter_corrupted
 
 
 if __name__ == "__main__":

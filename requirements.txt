@@ -1,4 +1,4 @@
-# Python dependencies for SkinMap.
+# Python dependencies for skinmap. NumPy stays below 2 for the FAISS wheels, so packages that dropped NumPy 1 stay below that release.
 # The reference environment is the Docker image (see Dockerfile), built on
 # pytorch/pytorch:2.5.1, where faiss is installed via conda (faiss-gpu). For a
 # CPU/local install, faiss-cpu is listed below; swap it for faiss-gpu if desired.
@@ -15,21 +15,21 @@ einops
 
 # Numerical / ML
 numpy<2
-scipy
-pandas
+scipy<1.17
+pandas>=2,<3
 scikit_learn<1.5
-scikit-image>=0.20.0
-faiss-cpu
-umap-learn
-statsmodels
+scikit-image>=0.20.0,<0.26
+faiss-cpu<1.14
+umap-learn==0.5.7
+pynndescent==0.5.13
+statsmodels<0.15
 xgboost
 imbalanced-learn
 joblib
 
 # Data harmonization / IO
-rapidfuzz
-pyarrow
-fastparquet
+pyarrow>=15,<23
+fastparquet<2026
 openpyxl
 lxml
 html5lib
@@ -43,7 +43,7 @@ cryptography
 ripser>=0.6.8
 
 # Visualization
-matplotlib
+matplotlib<3.11
 seaborn
 SciencePlots
 plotly
@@ -53,16 +53,3 @@ glasbey
 loguru
 wandb
 tqdm
-
-# Notebooks
-jupyter
-
-# Dev / testing / QA
-pytest
-pytest-cov>=3
-coverage>=6
-codecov
-black>=22.6
-isort>=5.10
-darglint>=1.8
-pre-commit>=2.20

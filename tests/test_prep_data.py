@@ -1,7 +1,8 @@
 import pandas as pd
 
-from src.prep_data import (
+from skinmap.pipeline.prep_data import (
     annotate_icd,
+    load_icd_mapping,
     clean_condition_series,
     harmonize_age,
     harmonize_dataframe,
@@ -18,6 +19,15 @@ def test_harmonize_body_location_extracts_laterality_and_region():
     out = harmonize_dataframe(df)
     assert out.loc[0, "laterality"] == "left"
     assert out.loc[0, "body_region"] == "upper_limb"
+
+
+def test_harmonize_body_location_routes_isic_acral_strings():
+    # ISIC archive encodes acral sites as bare "acral NOS" / "acral palms or
+    # soles"; these must route to the acral region (see MILK10k/BALD/DERM12345).
+    df = pd.DataFrame({"body_location": ["acral NOS", "acral palms or soles"]})
+    out = harmonize_dataframe(df)
+    assert out.loc[0, "body_region"] == "acral"
+    assert out.loc[1, "body_region"] == "acral"
 
 
 def test_merge_concise_captions_updates_matching_rows(tmp_path):
@@ -138,3 +148,14 @@ def test_log_value_counts_summary_reports_key_groups(caplog):
     assert "fitzpatrick" in summaries
     assert "age" in summaries
     assert "origin" in summaries
+
+
+def test_harmonize_fitzpatrick_turns_unparsable_strings_into_nan():
+    result = harmonize_fitzpatrick(pd.Series(["II", "3", "not recorded"]))
+    assert result.iloc[0] == 2
+    assert result.iloc[1] == 3
+    assert pd.isna(result.iloc[2])
+
+
+def test_missing_icd_mapping_loads_as_none(tmp_path):
+    assert load_icd_mapping(str(tmp_path / "missing.csv")) is None

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from src.skinmap.data.preprocessing import (
+from skinmap.data.preprocessing import (
     coerce_multilabel,
     create_thumbnail_column_parallel,
     get_stable_hash,
@@ -208,9 +208,25 @@ class TestGetStableHash:
 
         assert hash_one == hash_two
 
+    def test_project_root_follows_skinmap_root(self, monkeypatch, tmp_path):
+        """SKINMAP_ROOT sets the project root, and without it the working directory does."""
+        import importlib
+
+        import skinmap.data.preprocessing as prep_mod
+
+        try:
+            monkeypatch.setenv("SKINMAP_ROOT", str(tmp_path))
+            assert importlib.reload(prep_mod).PROJECT_ROOT == tmp_path.resolve()
+            monkeypatch.delenv("SKINMAP_ROOT")
+            monkeypatch.chdir(tmp_path)
+            assert importlib.reload(prep_mod).PROJECT_ROOT == tmp_path.resolve()
+        finally:
+            monkeypatch.undo()
+            importlib.reload(prep_mod)
+
     def test_absolute_paths_match_repo_relative(self, tmp_path, monkeypatch):
         """Absolute paths inside PROJECT_ROOT should hash identically to their relative form."""
-        from src.skinmap.data import preprocessing as prep_mod
+        from skinmap.data import preprocessing as prep_mod
 
         monkeypatch.setattr(prep_mod, "PROJECT_ROOT", tmp_path)
 
@@ -382,6 +398,7 @@ class TestEdgeCases:
         """Test thumbnail generation for very large image."""
         thumbnail_dir = os.path.join(temp_dir, "thumbnails")
 
+        os.path.join(temp_dir, "huge.jpg")
         # Create 10000x10000 image (but don't save to avoid disk space issues)
         # Instead test the logic
         normal_path = os.path.join(temp_dir, "normal.jpg")

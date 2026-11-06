@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from src.create_skinmap import persist_artifacts
-from src.embedding_fusion import train_one_epoch
-from src.skinmap.embeddings.projector import _normalize_teacher_blocks
-from src.skinmap.loss.clip_loss import CLIPLoss
+from skinmap.pipeline.create_skinmap import persist_artifacts
+from skinmap.pipeline.embedding_fusion import train_one_epoch
+from skinmap.embeddings.projector import _normalize_teacher_blocks
+from skinmap.loss.clip_loss import CLIPLoss
 
 
 def test_normalize_teacher_blocks_l2():
