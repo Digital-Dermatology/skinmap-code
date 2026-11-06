@@ -28,7 +28,6 @@ imbalanced-learn
 joblib
 
 # Data harmonization / IO
-rapidfuzz
 pyarrow>=15,<23
 fastparquet<2026
 openpyxl

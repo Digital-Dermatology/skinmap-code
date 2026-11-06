@@ -267,6 +267,10 @@ images or derived data. To reproduce the paper's atlas, use the code at tag
 [`v1.0.0`](https://github.com/Digital-Dermatology/skinmap-code/tree/v1.0.0). Later versions add datasets and
 change how body regions are grouped.
 
+ICD columns and the ICD analyses need a condition to ICD mapping CSV (`--icd_mapping`), with the columns
+`load_icd_mapping` lists in `skinmap/icd_mapping.py`. This repository does not include one, and the steps
+skip ICD columns without it. The `v1.0.0` tag has the scripts that build one from an ICD-10-CM table.
+
 1. **Obtain the datasets** from their original sources under their own licenses.
 2. **Build the input CSV** (`data.csv`: `img_path`, `description`, and any available
    metadata) with `skinmap.pipeline.prep_data`.

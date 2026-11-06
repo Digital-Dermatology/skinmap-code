@@ -1616,7 +1616,7 @@ def parse_args() -> argparse.Namespace:
         "--icd-mapping",
         type=Path,
         default=Path("results/condition_icd_mapping.csv"),
-        help="ICD mapping CSV (from scripts/build_icd_mapping.py).",
+        help="Condition to ICD mapping CSV. ICD columns are skipped if the file is missing.",
     )
     parser.add_argument(
         "--condition-col",

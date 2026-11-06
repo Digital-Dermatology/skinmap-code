@@ -2,6 +2,7 @@ import pandas as pd
 
 from skinmap.pipeline.prep_data import (
     annotate_icd,
+    load_icd_mapping,
     clean_condition_series,
     harmonize_age,
     harmonize_dataframe,
@@ -154,3 +155,7 @@ def test_harmonize_fitzpatrick_turns_unparsable_strings_into_nan():
     assert result.iloc[0] == 2
     assert result.iloc[1] == 3
     assert pd.isna(result.iloc[2])
+
+
+def test_missing_icd_mapping_loads_as_none(tmp_path):
+    assert load_icd_mapping(str(tmp_path / "missing.csv")) is None
