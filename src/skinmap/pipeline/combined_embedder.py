@@ -50,6 +50,17 @@ def _coerce_clip_features(feats, embeds_attr: str):
     )
 
 
+def _absolute(path: str | os.PathLike) -> Path:
+    """Absolute, normalized path that keeps symlinks.
+
+    ``Path.resolve`` follows symlinks. In a Hugging Face cache every file is a
+    symlink into ``blobs/``, so resolving moves the config dir away from its
+    sibling weights and renames ``dino_vit-base-patch16.pth`` to a hash, which
+    breaks the name-based teacher lookup.
+    """
+    return Path(os.path.abspath(path))
+
+
 @dataclass
 class ClipModelWrapper:
     name: str
@@ -98,8 +109,8 @@ class CombinedEmbeddingPipeline:
 
     def __init__(self, config: dict, config_path: Path, device: Optional[str] = None):
         self.config = config
-        self.config_path = config_path.resolve()
-        self.config_dir = self.config_path.parent.resolve()
+        self.config_path = _absolute(config_path)
+        self.config_dir = _absolute(self.config_path.parent)
         self.device = torch.device(device or "cpu")
         self._faiss_lock = threading.Lock()
 
@@ -141,7 +152,7 @@ class CombinedEmbeddingPipeline:
     def _resolve_artifact(self, rel_path: Optional[str]) -> Optional[Path]:
         if rel_path is None:
             return None
-        return (self.output_dir / rel_path).resolve()
+        return _absolute(self.output_dir / rel_path)
 
     def _resolve_skinmap_root(self, raw_root: Optional[str]) -> Optional[Path]:
         candidate_roots: List[Path] = []
@@ -151,9 +162,9 @@ class CombinedEmbeddingPipeline:
                 return
             path_obj = Path(path_like)
             if not path_obj.is_absolute():
-                path_obj = (self.config_dir / path_obj).resolve()
+                path_obj = _absolute(self.config_dir / path_obj)
             else:
-                path_obj = path_obj.resolve()
+                path_obj = _absolute(path_obj)
             candidate_roots.append(path_obj)
 
         if raw_root:
@@ -164,7 +175,7 @@ class CombinedEmbeddingPipeline:
 
         # Walk up the config directory hierarchy to find the project root.
         for ancestor in self.config_dir.parents:
-            candidate_roots.append(ancestor.resolve())
+            candidate_roots.append(_absolute(ancestor))
 
         seen: set[str] = set()
         for candidate in candidate_roots:
@@ -198,11 +209,11 @@ class CombinedEmbeddingPipeline:
         if path_obj.is_absolute():
             candidates.append(path_obj)
         else:
-            candidates.append((Path.cwd() / path_obj).resolve())
+            candidates.append(_absolute(Path.cwd() / path_obj))
             for base in bases:
                 if base is None:
                     continue
-                candidates.append((base / path_obj).resolve())
+                candidates.append(_absolute(base / path_obj))
 
         for candidate in candidates:
             if candidate.exists():
@@ -247,7 +258,7 @@ class CombinedEmbeddingPipeline:
         ):
             if candidate is None:
                 continue
-            resolved = candidate.resolve()
+            resolved = _absolute(candidate)
             if resolved not in roots:
                 roots.append(resolved)
         return roots
